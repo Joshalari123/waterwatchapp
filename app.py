@@ -24,6 +24,12 @@ st.set_page_config(
 # ── Custom Styling ─────────────────────────────
 st.markdown("""
 <style>
+    [data-testid="stAppViewContainer"] {
+        background-color: #0e1117;
+    }
+    * {
+        font-family: 'Arial', sans-serif;
+    }
     .main-header {
         font-size: 2.5rem;
         font-weight: bold;
@@ -37,26 +43,62 @@ st.markdown("""
         text-align: center;
         margin-bottom: 20px;
     }
-    .result-box-red {
-        background-color: #ffe6e6;
-        border-left: 5px solid #ff0000;
-        padding: 15px;
-        border-radius: 5px;
+       .result-box-red {
+        background-color: #c0392b;
+        border-left: 8px solid #ff0000;
+        padding: 20px;
+        border-radius: 8px;
         margin: 10px 0;
+        color: #ffffff;
+    }
+    .result-box-red h2 {
+        color: #ffffff !important;
+        font-size: 2rem;
+    }
+    .result-box-red h3 {
+        color: #ffffff !important;
+        font-size: 1.5rem;
+    }
+    .result-box-red p {
+        color: #ffffff !important;
     }
     .result-box-yellow {
-        background-color: #fff9e6;
-        border-left: 5px solid #ffa500;
-        padding: 15px;
-        border-radius: 5px;
+        background-color: #d35400;
+        border-left: 8px solid #ffa500;
+        padding: 20px;
+        border-radius: 8px;
         margin: 10px 0;
+        color: #ffffff;
+    }
+    .result-box-yellow h2 {
+        color: #ffffff !important;
+        font-size: 2rem;
+    }
+    .result-box-yellow h3 {
+        color: #ffffff !important;
+        font-size: 1.5rem;
+    }
+    .result-box-yellow p {
+        color: #ffffff !important;
     }
     .result-box-green {
-        background-color: #e6ffe6;
-        border-left: 5px solid #008000;
-        padding: 15px;
-        border-radius: 5px;
+        background-color: #27ae60;
+        border-left: 8px solid #00ff00;
+        padding: 20px;
+        border-radius: 8px;
         margin: 10px 0;
+        color: #ffffff;
+    }
+    .result-box-green h2 {
+        color: #ffffff !important;
+        font-size: 2rem;
+    }
+    .result-box-green h3 {
+        color: #ffffff !important;
+        font-size: 1.5rem;
+    }
+    .result-box-green p {
+        color: #ffffff !important;
     }
     .metric-card {
         background-color: #f0f2f6;
