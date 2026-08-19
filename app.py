@@ -1,20 +1,19 @@
-# ═══════════════════════════════════════════════════
-# WATERWATCH — Aquifer Water Breakthrough Early
-# Warning System
-# University of Benin — Final Year Project
-# ═══════════════════════════════════════════════════
+# ══════════════════════════════════════════════
+# WATERWATCH — Enhanced Sobocinski-Cornelius
+# Aquifer Water Breakthrough Prediction Tool
+# Niger Delta Oil Reservoirs
+# University of Benin Final Year Project
+# ══════════════════════════════════════════════
 
 import streamlit as st
-import pandas as pd
 import numpy as np
-import pickle
-import json
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import warnings
 warnings.filterwarnings('ignore')
 
-# ── PAGE CONFIGURATION ──────────────────────────────
+# ── Page Configuration ─────────────────────────
 st.set_page_config(
     page_title="WaterWatch",
     page_icon="💧",
@@ -22,819 +21,889 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── CUSTOM STYLING ───────────────────────────────────
+# ── Custom Styling ─────────────────────────────
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(135deg, #1a3a5c, #2980b9);
-        padding: 25px;
-        border-radius: 12px;
-        color: white;
-        text-align: center;
-        margin-bottom: 25px;
-    }
-    .risk-high {
-        background: linear-gradient(135deg, #c0392b, #e74c3c);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        font-size: 22px;
+        font-size: 2.5rem;
         font-weight: bold;
-    }
-    .risk-medium {
-        background: linear-gradient(135deg, #d35400, #e67e22);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
+        color: #1f77b4;
         text-align: center;
-        font-size: 22px;
-        font-weight: bold;
+        padding: 10px;
     }
-    .risk-low {
-        background: linear-gradient(135deg, #1e8449, #2ecc71);
-        padding: 20px;
-        border-radius: 10px;
-        color: white;
+    .sub-header {
+        font-size: 1rem;
+        color: #666;
         text-align: center;
-        font-size: 22px;
-        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .result-box-red {
+        background-color: #ffe6e6;
+        border-left: 5px solid #ff0000;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .result-box-yellow {
+        background-color: #fff9e6;
+        border-left: 5px solid #ffa500;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
+    .result-box-green {
+        background-color: #e6ffe6;
+        border-left: 5px solid #008000;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 10px 0;
     }
     .metric-card {
-        background: #f8f9fa;
-        border-left: 4px solid #2980b9;
+        background-color: #f0f2f6;
         padding: 15px;
         border-radius: 8px;
-        margin: 5px 0;
-    }
-    .section-header {
-        color: #1a3a5c;
-        font-size: 18px;
-        font-weight: bold;
-        border-bottom: 2px solid #2980b9;
-        padding-bottom: 5px;
-        margin: 15px 0;
-    }
-    .stButton button {
-        background: linear-gradient(135deg, #1a3a5c, #2980b9);
-        color: white;
-        border: none;
-        padding: 12px 30px;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: bold;
-        width: 100%;
-        cursor: pointer;
+        text-align: center;
+        margin: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ── LOAD MODELS ──────────────────────────────────────
-@st.cache_resource
-def load_models():
-    with open('waterwatch_classifier.pkl', 'rb') as f:
-        classifier = pickle.load(f)
-    with open('waterwatch_regressor.pkl', 'rb') as f:
-        regressor = pickle.load(f)
-    with open('waterwatch_scaler.pkl', 'rb') as f:
-        scaler = pickle.load(f)
-    with open('waterwatch_features.json', 'r') as f:
-        features = json.load(f)
-    with open('waterwatch_importance.json', 'r') as f:
-        importance = json.load(f)
-    return classifier, regressor, scaler, features, importance
+# ══════════════════════════════════════════════
+# CORE CALCULATION FUNCTIONS
+# ══════════════════════════════════════════════
 
-classifier, regressor, scaler, feature_cols, importance = load_models()
+def calculate_oil_specific_gravity(API):
+    return 141.5 / (API + 131.5)
 
-# ── HEADER ───────────────────────────────────────────
-st.markdown("""
-<div class="main-header">
-    <h1>💧 WaterWatch</h1>
-    <h3>Aquifer Water Breakthrough Early Warning System</h3>
-    <p>Niger Delta Oil Reservoirs — University of Benin</p>
-</div>
-""", unsafe_allow_html=True)
+def calculate_dead_oil_viscosity(API, T_F):
+    """
+    Beal (1946) / Standing (1981)
+    Ahmed (2010) Equation 2-117
+    """
+    T_R   = T_F + 460
+    a     = 10**(0.43 + 8.33/API)
+    mu_od = (0.32 + (1.8e7/API**4.53)) * \
+            (360/(T_R - 260))**a
+    return round(mu_od, 4)
 
-# ── SIDEBAR ──────────────────────────────────────────
+def calculate_bubble_point(Rs, gamma_g, T_F, API):
+    """
+    Standing (1947)
+    Ahmed (2010) Equation 2-72
+    """
+    Pb = 18.2 * ((Rs/gamma_g)**0.83 *
+                  10**(0.00091*T_F -
+                       0.0125*API) - 1.4)
+    return round(abs(Pb), 1)
+
+def calculate_saturated_viscosity(mu_od, Rs):
+    """
+    Beggs and Robinson (1975)
+    Ahmed (2010) Equation 2-121
+    """
+    a     = 10.715 * (Rs + 100)**(-0.515)
+    b     = 5.44   * (Rs + 150)**(-0.338)
+    mu_ob = a * (mu_od**b)
+    return round(mu_ob, 4)
+
+def calculate_undersaturated_viscosity(mu_ob,
+                                        Pi, Pb):
+    """
+    Ahmed (2010) Equation 2-123
+    """
+    a    = -3.9e-5 * Pi - 5
+    m    = 2.6 * Pi**1.187 * 10**a
+    mu_o = mu_ob * (Pi/Pb)**m
+    return round(mu_o, 4)
+
+def calculate_oil_fvf(Rs, gamma_g,
+                       gamma_o, T_F):
+    """
+    Standing (1947/1981)
+    Ahmed (2010) Equation 2-85
+    """
+    T_R = T_F + 460
+    F   = Rs * (gamma_g/gamma_o)**0.5 + \
+          1.25 * (T_R - 460)
+    Bo  = 0.9759 + 0.000120 * (F**1.2)
+    return round(Bo, 4)
+
+def calculate_water_density(salinity_ppm,
+                             T_F, P_psia):
+    """
+    Niger Delta formation water density
+    Source: Tuttle et al (1999)
+    """
+    rho_w = (62.4 +
+             (salinity_ppm/10000 * 0.5) -
+             0.003 * (T_F - 60) +
+             0.0000145 * P_psia)
+    return round(rho_w, 3)
+
+def calculate_oil_density(API, Bo, Rs, gamma_g):
+    """
+    Oil density at reservoir conditions
+    Ahmed (2010) Chapter 2
+    """
+    gamma_o  = 141.5 / (API + 131.5)
+    rho_surf = gamma_o * 62.4
+    rho_o    = (rho_surf +
+                0.01357 * Rs * gamma_g) / Bo
+    return round(rho_o, 3)
+
+def apply_niger_delta_corrections(kh_mean,
+        kv_matrix, phi_log, depth_ft,
+        V_DP, Vsh, SCI):
+    """
+    Niger Delta Rock Corrections:
+    1. Dykstra-Parsons - Tuttle et al (1999)
+    2. SCI - Novel contribution this study
+       Short & Stauble (1967)
+    3. Athy compaction - Athy (1930)
+       Doust & Omatsola (1990)
+    """
+    kh_eff  = kh_mean * (1 - V_DP)
+    kv_eff  = kv_matrix * (1 - Vsh * SCI)
+    phi_eff = phi_log * np.exp(-0.000025 *
+                                depth_ft)
+    return {
+        'kh_eff':  round(kh_eff, 2),
+        'kv_eff':  round(kv_eff, 4),
+        'phi_eff': round(phi_eff, 4)
+    }
+
+def calculate_mobility_ratio(krw_sor, kro_swc,
+                              mu_o, mu_w):
+    """Ahmed (2010) Equation 9-24"""
+    M = (krw_sor/kro_swc) * (mu_o/mu_w)
+    alpha = 0.5 if M <= 1 else 0.6
+    return round(M, 4), alpha
+
+def sobocinski_cornelius(kh_eff, kv_eff,
+        phi_eff, h, hp, mu_o, Bo, Qo,
+        rho_w, rho_o, M, alpha):
+    """
+    Sobocinski-Cornelius (1965)
+    Ahmed (2010) Equations 9-21 to 9-23
+    Bottom water drive — vertical wells
+    """
+    delta_rho = rho_w - rho_o
+    if delta_rho <= 0:
+        return None, None, None, \
+               "Error: Water must be denser than oil"
+
+    Z = (0.492e-4 * delta_rho * kh_eff *
+         h * (h - hp)) / (mu_o * Bo * Qo)
+
+    if Z <= 0:
+        return None, None, None, \
+               "Error: Z≤0 — check h > hp"
+    if Z >= 3.5:
+        return None, None, None, \
+               "Warning: Z≥3.5 outside valid range"
+
+    tD_BT = (4*Z + 1.75*Z**2 - 0.75*Z**3) / \
+            (7 - 2*Z)
+
+    tBT = (20325 * mu_o * h * phi_eff * tD_BT) / \
+          (delta_rho * kv_eff * (1 + M**alpha))
+
+    return (round(Z, 4),
+            round(tD_BT, 4),
+            round(tBT, 1), None)
+
+def bournazel_jeanson(kh_eff, kv_eff,
+        phi_eff, h, hp, mu_o, Bo, Qo,
+        rho_w, rho_o, M):
+    """
+    Bournazel and Jeanson (1971) SPE-3628
+    Edge water drive — vertical wells
+    Valid: 0.14 < M ≤ 7.3
+    """
+    delta_rho = rho_w - rho_o
+    alpha_bj  = 0.7
+
+    Z = (0.492e-4 * delta_rho * kh_eff *
+         h * (h - hp)) / (mu_o * Bo * Qo)
+
+    if Z <= 0 or (3 - 0.7*Z) <= 0:
+        return None, None, None, \
+               "Outside valid range"
+
+    tD_BT_BJ = Z / (3 - 0.7*Z)
+
+    tBT_BJ = (20325 * mu_o * h * phi_eff *
+               tD_BT_BJ) / \
+              (delta_rho * kv_eff *
+               (1 + M**alpha_bj))
+
+    return (round(Z, 4),
+            round(tD_BT_BJ, 4),
+            round(tBT_BJ, 1), None)
+
+def classify_risk(tBT):
+    if tBT <= 365:
+        return {
+            'category': 'HIGH RISK',
+            'symbol':   '🔴',
+            'color':    'red',
+            'box':      'result-box-red',
+            'action':   'Begin water handling '
+                       'facility planning '
+                       'immediately. Consider '
+                       'rate reduction.'
+        }
+    elif tBT <= 730:
+        return {
+            'category': 'MEDIUM RISK',
+            'symbol':   '🟡',
+            'color':    'orange',
+            'box':      'result-box-yellow',
+            'action':   'Plan water handling '
+                       'within 6 months. '
+                       'Monitor production closely.'
+        }
+    else:
+        return {
+            'category': 'LOW RISK',
+            'symbol':   '🟢',
+            'color':    'green',
+            'box':      'result-box-green',
+            'action':   'Monitor quarterly. '
+                       'No immediate action required.'
+        }
+
+def run_sci_sensitivity(kh_eff, kv_matrix,
+        phi_eff, h, hp, mu_o, Bo, Qo,
+        rho_w, rho_o, M, alpha, Vsh):
+    """SCI Sensitivity Analysis"""
+    SCI_values = [0.0, 0.2, 0.4,
+                  0.6, 0.8, 1.0]
+    results = []
+    for SCI in SCI_values:
+        kv_s = kv_matrix * (1 - Vsh * SCI)
+        _, _, tBT_s, err = sobocinski_cornelius(
+            kh_eff, kv_s, phi_eff,
+            h, hp, mu_o, Bo, Qo,
+            rho_w, rho_o, M, alpha
+        )
+        if tBT_s:
+            risk = classify_risk(tBT_s)
+            results.append({
+                'SCI':      SCI,
+                'kv_eff':   round(kv_s, 2),
+                'tBT_days': tBT_s,
+                'tBT_years':round(tBT_s/365, 2),
+                'Risk':     risk['category']
+            })
+    return pd.DataFrame(results)
+
+# ══════════════════════════════════════════════
+# APP HEADER
+# ══════════════════════════════════════════════
+
+st.markdown(
+    '<div class="main-header">💧 WaterWatch</div>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<div class="sub-header">'
+    'Enhanced Sobocinski-Cornelius Aquifer '
+    'Water Breakthrough Prediction Tool<br>'
+    'Niger Delta Oil Reservoirs | '
+    'University of Benin Final Year Project'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+st.divider()
+
+# ══════════════════════════════════════════════
+# SIDEBAR — INPUT PARAMETERS
+# ══════════════════════════════════════════════
+
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/oil-pump.png",
-             width=80)
-    st.markdown("### About WaterWatch")
-    st.info("""
-    WaterWatch predicts water breakthrough
-    risk in Niger Delta oil wells using:
+    st.header("⚙️ Input Parameters")
 
-    - Static reservoir properties
-    - Well test data (Day 1-7)
-    - Early production signals (Day 7-30)
-
-    **University of Benin**
-    Department of Petroleum Engineering
-    Final Year Project 2025/2026
-    """)
-
-    st.markdown("### Model Performance")
-    st.metric("CV Accuracy", "84.9%", "+14.6%")
-    st.metric("R² Score", "0.761", "+0.079")
-    st.metric("High Risk Recall", "77%")
-    st.metric("Training Wells", "347")
-
-    st.markdown("### Quick Scenarios")
-    scenario = st.selectbox(
-        "Load example scenario:",
-        ["Custom Input",
-         "High Risk Well",
-         "Medium Risk Well",
-         "Low Risk Well"]
+    # PVT Option
+    pvt_option = st.radio(
+        "PVT Data Availability",
+        ["Calculate from correlations",
+         "Enter measured PVT values"],
+        help="Select if you have a PVT report"
     )
 
-# ── SCENARIO PRESETS ────────────────────────────────
-scenarios = {
-    "High Risk Well": {
-        'permeability': 2500.0,
-        'porosity': 0.28,
-        'kv_kh_ratio': 0.25,
-        'oil_column_height': 35.0,
-        'reservoir_thickness': 80.0,
-        'reservoir_radius': 3000.0,
-        'depth': 8000.0,
-        'perforation_depth': 0.85,
-        'oil_viscosity': 8.0,
-        'water_viscosity': 0.5,
-        'oil_fvf': 1.35,
-        'water_fvf': 1.02,
-        'aquifer_radius_ratio': 8.0,
-        'aquifer_type': 1,
-        'aquifer_permeability': 2800.0,
-        'production_rate': 4000.0,
-        'initial_pressure': 4500.0,
-        'total_compressibility': 0.000005,
-        'gas_cap_ratio': 0.3,
-        'mobility_ratio': 7.5,
-        'dimensionless_time': 500000000.0,
-        'water_influx': 800000.0,
-        'productivity_index': 12.0,
-        'vertical_permeability': 625.0,
-        'initial_PI': 13.5,
-        'skin_factor': 2.0,
-        'pressure_response': 1.2,
-        'flow_efficiency': 1.1,
-        'initial_decline_rate': 0.003,
-        'PI_trend': 0.04,
-        'b_exponent': 0.90,
-        'GOR_trend': 0.2,
-        'cumulative_voidage': 2.5,
-        'pressure_maintenance': 0.85
-    },
-    "Medium Risk Well": {
-        'permeability': 1200.0,
-        'porosity': 0.25,
-        'kv_kh_ratio': 0.12,
-        'oil_column_height': 75.0,
-        'reservoir_thickness': 100.0,
-        'reservoir_radius': 2500.0,
-        'depth': 7000.0,
-        'perforation_depth': 0.50,
-        'oil_viscosity': 4.0,
-        'water_viscosity': 0.5,
-        'oil_fvf': 1.25,
-        'water_fvf': 1.02,
-        'aquifer_radius_ratio': 5.0,
-        'aquifer_type': 1,
-        'aquifer_permeability': 1100.0,
-        'production_rate': 2000.0,
-        'initial_pressure': 4000.0,
-        'total_compressibility': 0.000005,
-        'gas_cap_ratio': 0.5,
-        'mobility_ratio': 4.0,
-        'dimensionless_time': 300000000.0,
-        'water_influx': 400000.0,
-        'productivity_index': 7.0,
-        'vertical_permeability': 144.0,
-        'initial_PI': 7.5,
-        'skin_factor': 3.0,
-        'pressure_response': 0.8,
-        'flow_efficiency': 1.0,
-        'initial_decline_rate': 0.008,
-        'PI_trend': 0.01,
-        'b_exponent': 0.55,
-        'GOR_trend': 0.8,
-        'cumulative_voidage': 1.5,
-        'pressure_maintenance': 0.60
-    },
-    "Low Risk Well": {
-        'permeability': 300.0,
-        'porosity': 0.22,
-        'kv_kh_ratio': 0.05,
-        'oil_column_height': 120.0,
-        'reservoir_thickness': 150.0,
-        'reservoir_radius': 2000.0,
-        'depth': 9000.0,
-        'perforation_depth': 0.30,
-        'oil_viscosity': 1.5,
-        'water_viscosity': 0.4,
-        'oil_fvf': 1.45,
-        'water_fvf': 1.01,
-        'aquifer_radius_ratio': 2.5,
-        'aquifer_type': 0,
-        'aquifer_permeability': 280.0,
-        'production_rate': 800.0,
-        'initial_pressure': 5500.0,
-        'total_compressibility': 0.000003,
-        'gas_cap_ratio': 1.2,
-        'mobility_ratio': 1.2,
-        'dimensionless_time': 100000000.0,
-        'water_influx': 50000.0,
-        'productivity_index': 2.5,
-        'vertical_permeability': 15.0,
-        'initial_PI': 2.8,
-        'skin_factor': 1.0,
-        'pressure_response': 0.3,
-        'flow_efficiency': 0.95,
-        'initial_decline_rate': 0.020,
-        'PI_trend': -0.01,
-        'b_exponent': 0.25,
-        'GOR_trend': 1.5,
-        'cumulative_voidage': 0.5,
-        'pressure_maintenance': 0.35
-    }
-}
+    st.subheader("🪨 Rock Properties")
+    kh_mean   = st.number_input(
+        "Horizontal Permeability kh (md)",
+        min_value=10.0, max_value=5000.0,
+        value=1800.0, step=10.0)
+    kv_matrix = st.number_input(
+        "Vertical Permeability kv (md)",
+        min_value=1.0, max_value=1000.0,
+        value=270.0, step=5.0)
+    phi_log   = st.number_input(
+        "Log Porosity φ (fraction)",
+        min_value=0.05, max_value=0.45,
+        value=0.28, step=0.01)
+    depth_ft  = st.number_input(
+        "Reservoir Depth (ft)",
+        min_value=1000.0, max_value=15000.0,
+        value=8500.0, step=100.0)
+    h         = st.number_input(
+        "Oil Column Height h (ft)",
+        min_value=5.0, max_value=300.0,
+        value=80.0, step=1.0)
+    hp        = st.number_input(
+        "Perforated Interval hp (ft)",
+        min_value=1.0, max_value=200.0,
+        value=25.0, step=1.0)
 
-# Get default values
-if scenario != "Custom Input":
-    defaults = scenarios[scenario]
-else:
-    defaults = scenarios["Medium Risk Well"]
+    st.subheader("🌍 Niger Delta Corrections")
+    V_DP = st.slider(
+        "Dykstra-Parsons Coefficient V",
+        min_value=0.0, max_value=0.9,
+        value=0.45, step=0.05,
+        help="Niger Delta range: 0.3-0.6 "
+             "(Tuttle et al 1999)")
+    Vsh  = st.slider(
+        "Shale Volume Fraction Vsh",
+        min_value=0.0, max_value=0.5,
+        value=0.15, step=0.01,
+        help="From Gamma Ray log. "
+             "Niger Delta clean sands: 0.05-0.25 "
+             "(Avbovbo 1978)")
+    SCI  = st.slider(
+        "Shale Continuity Index SCI ★",
+        min_value=0.0, max_value=1.0,
+        value=0.50, step=0.05,
+        help="★ Novel parameter proposed in "
+             "this study. "
+             "0=discontinuous shales, "
+             "1=fully continuous shales. "
+             "Estimate: SCI = 1 - NTG")
 
-# ── MAIN INPUT FORM ──────────────────────────────────
-st.markdown("## 📋 Well & Reservoir Input Parameters")
-
-tab1, tab2, tab3 = st.tabs([
-    "🪨 Static Reservoir Properties",
-    "🧪 Fluid Properties",
-    "📈 Early Production Signals"
-])
-
-with tab1:
-    st.markdown('<p class="section-header">Rock & Geometry Properties</p>',
-                unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        permeability = st.number_input(
-            "Permeability (md)",
-            min_value=10.0, max_value=5000.0,
-            value=defaults['permeability'],
-            help="Horizontal permeability from core/logs"
-        )
-        porosity = st.number_input(
-            "Porosity (fraction)",
-            min_value=0.05, max_value=0.45,
-            value=defaults['porosity'],
-            step=0.01,
-            help="Effective porosity fraction"
-        )
-        kv_kh_ratio = st.number_input(
-            "kv/kh Ratio",
-            min_value=0.001, max_value=0.5,
-            value=defaults['kv_kh_ratio'],
-            step=0.01,
-            help="Vertical to horizontal permeability ratio"
-        )
-        oil_column_height = st.number_input(
-            "Oil Column Height (ft)",
-            min_value=10.0, max_value=300.0,
-            value=defaults['oil_column_height'],
-            help="Height of oil zone above OWC"
-        )
-
-    with col2:
-        reservoir_thickness = st.number_input(
-            "Reservoir Thickness (ft)",
-            min_value=10.0, max_value=500.0,
-            value=defaults['reservoir_thickness'],
-            help="Net pay thickness"
-        )
-        reservoir_radius = st.number_input(
-            "Reservoir Radius (ft)",
-            min_value=500.0, max_value=8000.0,
-            value=defaults['reservoir_radius'],
-            help="Drainage radius"
-        )
-        depth = st.number_input(
-            "Reservoir Depth (ft)",
-            min_value=2000.0, max_value=15000.0,
-            value=defaults['depth'],
-            help="True vertical depth"
-        )
-        perforation_depth = st.number_input(
-            "Perforation Position (0=bottom, 1=top)",
-            min_value=0.1, max_value=0.99,
-            value=defaults['perforation_depth'],
-            step=0.05,
-            help="Relative perforation position in reservoir"
-        )
-
-    with col3:
-        aquifer_radius_ratio = st.number_input(
-            "Aquifer Radius Ratio",
-            min_value=1.0, max_value=15.0,
-            value=defaults['aquifer_radius_ratio'],
-            step=0.5,
-            help="Ratio of aquifer to reservoir radius"
-        )
-        aquifer_type = st.selectbox(
-            "Aquifer Type",
-            options=[0, 1],
-            index=defaults['aquifer_type'],
-            format_func=lambda x: "Edge Water Drive" if x==0
-                                  else "Bottom Water Drive",
-            help="Type of natural aquifer support"
-        )
-        gas_cap_ratio = st.number_input(
-            "Gas Cap Ratio (m)",
-            min_value=0.0, max_value=3.0,
-            value=defaults['gas_cap_ratio'],
-            step=0.1,
-            help="Gas cap to oil zone volume ratio"
-        )
-        production_rate = st.number_input(
-            "Production Rate (bbl/day)",
-            min_value=100.0, max_value=8000.0,
-            value=defaults['production_rate'],
-            help="Current production rate"
-        )
-
-with tab2:
-    st.markdown('<p class="section-header">Fluid & PVT Properties</p>',
-                unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        oil_viscosity = st.number_input(
-            "Oil Viscosity (cp)",
-            min_value=0.3, max_value=20.0,
-            value=defaults['oil_viscosity'],
-            step=0.1,
-            help="Dead oil viscosity at reservoir conditions"
-        )
-        water_viscosity = st.number_input(
-            "Water Viscosity (cp)",
-            min_value=0.2, max_value=1.5,
-            value=defaults['water_viscosity'],
-            step=0.05,
-            help="Formation water viscosity"
-        )
-
-    with col2:
-        oil_fvf = st.number_input(
-            "Oil FVF Bo (bbl/STB)",
-            min_value=1.05, max_value=2.5,
-            value=defaults['oil_fvf'],
-            step=0.05,
-            help="Oil formation volume factor"
-        )
-        water_fvf = st.number_input(
-            "Water FVF Bw (bbl/STB)",
-            min_value=1.0, max_value=1.1,
-            value=defaults['water_fvf'],
-            step=0.005,
-            help="Water formation volume factor"
-        )
-
-    with col3:
-        initial_pressure = st.number_input(
-            "Initial Reservoir Pressure (psi)",
+    st.subheader("🧪 Fluid Properties")
+    if pvt_option == "Calculate from correlations":
+        API     = st.number_input(
+            "API Gravity (°)",
+            min_value=15.0, max_value=55.0,
+            value=35.0, step=0.5)
+        T_F     = st.number_input(
+            "Reservoir Temperature (°F)",
+            min_value=100.0, max_value=300.0,
+            value=180.0, step=5.0)
+        Rs      = st.number_input(
+            "Solution GOR Rs (scf/STB)",
+            min_value=50.0, max_value=2000.0,
+            value=600.0, step=10.0)
+        gamma_g = st.number_input(
+            "Gas Specific Gravity γg",
+            min_value=0.5, max_value=1.2,
+            value=0.75, step=0.01)
+        Pi      = st.number_input(
+            "Initial Reservoir Pressure (psia)",
             min_value=500.0, max_value=10000.0,
-            value=defaults['initial_pressure'],
-            help="Initial static reservoir pressure"
-        )
-        total_compressibility = st.number_input(
-            "Total Compressibility (psi⁻¹)",
-            min_value=0.000001, max_value=0.00005,
-            value=defaults['total_compressibility'],
-            step=0.000001,
-            format="%.6f",
-            help="Total system compressibility"
-        )
+            value=4200.0, step=50.0)
+        salinity_ppm = st.number_input(
+            "Formation Water Salinity (ppm)",
+            min_value=1000.0, max_value=150000.0,
+            value=35000.0, step=1000.0)
+        mu_w    = st.number_input(
+            "Water Viscosity μw (cp)",
+            min_value=0.2, max_value=1.5,
+            value=0.50, step=0.05)
+        mu_o_measured = None
+        Bo_measured   = None
+        Pb_measured   = None
+    else:
+        API     = st.number_input(
+            "API Gravity (°)",
+            min_value=15.0, max_value=55.0,
+            value=35.0, step=0.5)
+        T_F     = st.number_input(
+            "Reservoir Temperature (°F)",
+            min_value=100.0, max_value=300.0,
+            value=180.0, step=5.0)
+        Pi      = st.number_input(
+            "Initial Reservoir Pressure (psia)",
+            min_value=500.0, max_value=10000.0,
+            value=4200.0, step=50.0)
+        salinity_ppm = st.number_input(
+            "Formation Water Salinity (ppm)",
+            min_value=1000.0, max_value=150000.0,
+            value=35000.0, step=1000.0)
+        mu_o_measured = st.number_input(
+            "Measured Oil Viscosity μo (cp)",
+            min_value=0.1, max_value=100.0,
+            value=0.6, step=0.1)
+        Bo_measured   = st.number_input(
+            "Measured Oil FVF Bo (bbl/STB)",
+            min_value=1.0, max_value=3.0,
+            value=1.34, step=0.01)
+        Pb_measured   = st.number_input(
+            "Measured Bubble Point Pb (psia)",
+            min_value=100.0, max_value=8000.0,
+            value=2463.0, step=10.0)
+        mu_w    = st.number_input(
+            "Water Viscosity μw (cp)",
+            min_value=0.2, max_value=1.5,
+            value=0.50, step=0.05)
+        Rs      = 600.0
+        gamma_g = 0.75
 
-with tab3:
-    st.markdown('<p class="section-header">Well Test Data (Day 1-7)</p>',
-                unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
+    st.subheader("💧 Saturation Data")
+    krw_sor = st.number_input(
+        "Water Rel Perm at Sor (krw_sor)",
+        min_value=0.1, max_value=0.8,
+        value=0.35, step=0.05)
+    kro_swc = st.number_input(
+        "Oil Rel Perm at Swc (kro_swc)",
+        min_value=0.3, max_value=1.0,
+        value=0.85, step=0.05)
 
-    with col1:
-        initial_PI = st.number_input(
-            "Initial Productivity Index",
-            min_value=0.1, max_value=200.0,
-            value=defaults['initial_PI'],
-            step=0.5,
-            help="PI from first flow test (bbl/day/psi)"
-        )
-        skin_factor = st.number_input(
-            "Skin Factor",
-            min_value=-5.0, max_value=20.0,
-            value=defaults['skin_factor'],
-            step=0.5,
-            help="Formation damage/stimulation factor"
-        )
-        flow_efficiency = st.number_input(
-            "Flow Efficiency",
-            min_value=0.3, max_value=1.5,
-            value=defaults['flow_efficiency'],
-            step=0.05,
-            help="Actual PI / Theoretical PI"
-        )
+    st.subheader("⚡ Production Data")
+    Qo = st.number_input(
+        "Average Production Rate Qo (STB/day)",
+        min_value=100.0, max_value=10000.0,
+        value=2000.0, step=100.0)
 
-    with col2:
-        pressure_response = st.number_input(
-            "Pressure Response Rate (psi/hr)",
-            min_value=0.1, max_value=50.0,
-            value=defaults['pressure_response'],
-            step=0.1,
-            help="Rate of pressure drop when well opens"
-        )
-        initial_decline_rate = st.number_input(
-            "Initial Decline Rate (fraction/day)",
-            min_value=0.0001, max_value=0.1,
-            value=defaults['initial_decline_rate'],
-            step=0.001,
-            format="%.4f",
-            help="Rate decline in first week"
-        )
-
-    st.markdown('<p class="section-header">Early Production Signals (Day 7-30)</p>',
-                unsafe_allow_html=True)
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        PI_trend = st.number_input(
-            "PI Trend (fraction/day)",
-            min_value=-0.1, max_value=0.1,
-            value=defaults['PI_trend'],
-            step=0.005,
-            format="%.4f",
-            help="Rate of PI change (+ve = improving = water signal)"
-        )
-        b_exponent = st.number_input(
-            "Arps b Exponent",
-            min_value=0.0, max_value=1.5,
-            value=defaults['b_exponent'],
-            step=0.05,
-            help="Decline curve exponent (higher = stronger aquifer)"
-        )
-
-    with col2:
-        GOR_trend = st.number_input(
-            "GOR Trend (scf/bbl/day)",
-            min_value=-2.0, max_value=5.0,
-            value=defaults['GOR_trend'],
-            step=0.1,
-            help="Rate of GOR change (stable = aquifer active)"
-        )
-        pressure_maintenance = st.number_input(
-            "Pressure Maintenance Index",
-            min_value=0.1, max_value=1.0,
-            value=defaults['pressure_maintenance'],
-            step=0.05,
-            help="Ratio of actual to expected pressure (1=fully maintained)"
-        )
-
-    with col3:
-        cumulative_voidage = st.number_input(
-            "Cumulative Voidage Ratio",
-            min_value=0.0, max_value=5.0,
-            value=defaults['cumulative_voidage'],
-            step=0.1,
-            help="Aquifer influx / produced volume ratio"
-        )
-
-# ── CALCULATE DERIVED FEATURES ──────────────────────
-mobility_ratio = (0.3 / water_viscosity) / (0.8 / oil_viscosity)
-vertical_permeability = permeability * kv_kh_ratio
-aquifer_permeability  = permeability * 1.1
-t_hours = 90 * 24
-dimensionless_time = (0.000264 * permeability * t_hours) / \
-                     (porosity * oil_viscosity * \
-                      total_compressibility * 0.35**2)
-aquifer_constant = (1.119 * porosity * total_compressibility * \
-                    reservoir_radius**2 * reservoir_thickness)
-pressure_drawdown = production_rate * oil_viscosity * \
-                    np.log(reservoir_radius / 0.35) / \
-                    (0.00708 * permeability * reservoir_thickness)
-water_influx = aquifer_constant * pressure_drawdown * \
-               aquifer_radius_ratio
-productivity_index = (0.00708 * permeability * \
-                      reservoir_thickness) / \
-                     (oil_viscosity * \
-                      np.log(reservoir_radius / 0.35))
-
-# ── BUILD INPUT DATAFRAME ────────────────────────────
-input_data = {
-    'permeability':           permeability,
-    'porosity':               porosity,
-    'kv_kh_ratio':            kv_kh_ratio,
-    'vertical_permeability':  vertical_permeability,
-    'oil_column_height':      oil_column_height,
-    'reservoir_thickness':    reservoir_thickness,
-    'reservoir_radius':       reservoir_radius,
-    'depth':                  depth,
-    'perforation_depth':      perforation_depth,
-    'oil_viscosity':          oil_viscosity,
-    'water_viscosity':        water_viscosity,
-    'oil_fvf':                oil_fvf,
-    'water_fvf':              water_fvf,
-    'aquifer_radius_ratio':   aquifer_radius_ratio,
-    'aquifer_type':           aquifer_type,
-    'aquifer_permeability':   aquifer_permeability,
-    'production_rate':        production_rate,
-    'initial_pressure':       initial_pressure,
-    'total_compressibility':  total_compressibility,
-    'gas_cap_ratio':          gas_cap_ratio,
-    'mobility_ratio':         mobility_ratio,
-    'dimensionless_time':     dimensionless_time,
-    'water_influx':           water_influx,
-    'productivity_index':     productivity_index,
-    'initial_PI':             initial_PI,
-    'skin_factor':            skin_factor,
-    'pressure_response':      pressure_response,
-    'flow_efficiency':        flow_efficiency,
-    'initial_decline_rate':   initial_decline_rate,
-    'PI_trend':               PI_trend,
-    'b_exponent':             b_exponent,
-    'GOR_trend':              GOR_trend,
-    'cumulative_voidage':     cumulative_voidage,
-    'pressure_maintenance':   pressure_maintenance
-}
-
-# ── PREDICT BUTTON ───────────────────────────────────
-st.markdown("---")
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    predict_button = st.button(
-        "🔍 RUN WATERWATCH PREDICTION",
+    # Predict Button
+    predict_btn = st.button(
+        "🔍 PREDICT BREAKTHROUGH",
+        type="primary",
         use_container_width=True
     )
 
-# ── PREDICTION & RESULTS ─────────────────────────────
-if predict_button:
+# ══════════════════════════════════════════════
+# MAIN CALCULATIONS AND RESULTS
+# ══════════════════════════════════════════════
 
-    # Prepare input
-    input_df = pd.DataFrame([input_data])
-    input_df = input_df[feature_cols]
-    input_scaled = scaler.transform(input_df)
+if predict_btn:
 
-    # Make predictions
-    risk_pred  = classifier.predict(input_scaled)[0]
-    risk_proba = classifier.predict_proba(input_scaled)[0]
-    bt_pred    = regressor.predict(input_scaled)[0]
-    bt_pred    = max(120, bt_pred)
-
-    # Risk labels
-    risk_labels = {
-        0: ("🟢 LOW RISK", "risk-low",
-            "Breakthrough expected beyond 2 years",
-            "Monitor normally. No immediate action required."),
-        1: ("🟡 MEDIUM RISK", "risk-medium",
-            "Breakthrough expected within 1-2 years",
-            "Increase monitoring frequency. Plan water handling facilities."),
-        2: ("🔴 HIGH RISK", "risk-high",
-            "Breakthrough expected within 1 year",
-            "Immediate action recommended. Review production rate.")
-    }
-
-    label, css_class, description, action = risk_labels[risk_pred]
-
-    st.markdown("---")
-    st.markdown("## 🎯 WaterWatch Prediction Results")
-
-    # ── RISK RESULT ──────────────────────────────────
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        st.markdown(f"""
-        <div class="{css_class}">
-            <h2>{label}</h2>
-            <p>{description}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("### ⚡ Recommended Action")
-        st.warning(action)
-
-    with col2:
-        # Breakthrough time metrics
-        st.markdown("### 📊 Breakthrough Time Estimate")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric(
-                "Predicted Breakthrough",
-                f"{bt_pred:.0f} days",
-                f"{bt_pred/365:.1f} years"
-            )
-        with col_b:
-            st.metric(
-                "Lead Time Available",
-                f"{max(0, bt_pred-30):.0f} days",
-                "time to act"
-            )
-
-        # Confidence gauge
-        confidence = max(risk_proba) * 100
-        st.markdown(f"### 🎯 Model Confidence: {confidence:.1f}%")
-        st.progress(int(confidence))
-
-    # ── PROBABILITY CHART ────────────────────────────
-    st.markdown("### 📊 Risk Probability Distribution")
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        fig_prob = go.Figure(go.Bar(
-            x=['🟢 Low Risk\n(>2 years)',
-               '🟡 Medium Risk\n(1-2 years)',
-               '🔴 High Risk\n(<1 year)'],
-            y=[risk_proba[0]*100,
-               risk_proba[1]*100,
-               risk_proba[2]*100],
-            marker_color=['#2ecc71', '#e67e22', '#e74c3c'],
-            text=[f'{p*100:.1f}%' for p in risk_proba],
-            textposition='auto'
-        ))
-        fig_prob.update_layout(
-            title="Breakthrough Risk Probabilities",
-            yaxis_title="Probability (%)",
-            yaxis_range=[0, 100],
-            height=350,
-            showlegend=False
+    # Input validation
+    if hp >= h:
+        st.error(
+            "❌ Perforated interval (hp) must be "
+            "less than oil column height (h). "
+            "Please check your inputs."
         )
-        st.plotly_chart(fig_prob, use_container_width=True)
+        st.stop()
 
-    with col2:
-        # Timeline visualization
-        bt_years = bt_pred / 365
-        fig_time = go.Figure()
-        fig_time.add_trace(go.Scatter(
-            x=[0, bt_years],
-            y=[1, 1],
-            mode='lines',
-            line=dict(color='lightgray', width=8),
-            showlegend=False
-        ))
-        fig_time.add_trace(go.Scatter(
-            x=[0],
-            y=[1],
-            mode='markers+text',
-            marker=dict(size=20, color='#2980b9',
-                       symbol='diamond'),
-            text=['NOW'],
-            textposition='top center',
-            name='Current',
-            showlegend=False
-        ))
-        fig_time.add_trace(go.Scatter(
-            x=[bt_years],
-            y=[1],
-            mode='markers+text',
-            marker=dict(size=20, color='#e74c3c',
-                       symbol='x'),
-            text=[f'BT\n~{bt_years:.1f}yr'],
-            textposition='top center',
-            name='Breakthrough',
-            showlegend=False
-        ))
-        fig_time.update_layout(
-            title="Predicted Breakthrough Timeline",
-            xaxis_title="Years from Now",
-            height=350,
-            yaxis=dict(visible=False),
-            xaxis_range=[-0.2, bt_years + 0.5]
-        )
-        st.plotly_chart(fig_time, use_container_width=True)
+    # ── Niger Delta Corrections ─────────────────
+    rock = apply_niger_delta_corrections(
+        kh_mean, kv_matrix, phi_log,
+        depth_ft, V_DP, Vsh, SCI
+    )
+    kh_eff  = rock['kh_eff']
+    kv_eff  = rock['kv_eff']
+    phi_eff = rock['phi_eff']
 
-    # ── KEY RISK FACTORS ────────────────────────────
-    st.markdown("### 🔬 Key Risk Factors (SHAP-Based)")
-    top_features = sorted(
-        importance.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:10]
+    # ── Fluid Properties ────────────────────────
+    gamma_o = calculate_oil_specific_gravity(API)
 
-    factor_names  = [f[0].replace('_', ' ').title()
-                     for f in top_features]
-    factor_values = [f[1] for f in top_features]
-    factor_colors = []
-    accelerate = ['mobility ratio', 'production rate',
-                  'aquifer radius ratio', 'kv kh ratio',
-                  'pi trend', 'b exponent',
-                  'pressure maintenance', 'initial pi']
-    for name in factor_names:
-        if name.lower() in accelerate:
-            factor_colors.append('#e74c3c')
+    if pvt_option == "Calculate from correlations":
+        mu_od = calculate_dead_oil_viscosity(
+            API, T_F)
+        Pb    = calculate_bubble_point(
+            Rs, gamma_g, T_F, API)
+        mu_ob = calculate_saturated_viscosity(
+            mu_od, Rs)
+        if Pi > Pb:
+            mu_o = calculate_undersaturated_viscosity(
+                mu_ob, Pi, Pb)
+            condition = f"Undersaturated (Pi={Pi} > Pb={Pb})"
         else:
-            factor_colors.append('#2ecc71')
+            mu_o = mu_ob
+            condition = f"Saturated (Pi={Pi} ≤ Pb={Pb})"
+        Bo = calculate_oil_fvf(
+            Rs, gamma_g, gamma_o, T_F)
+    else:
+        mu_o      = mu_o_measured
+        Bo        = Bo_measured
+        Pb        = Pb_measured
+        mu_od     = None
+        condition = "Measured PVT values used"
 
-    fig_imp = go.Figure(go.Bar(
-        x=factor_values,
-        y=factor_names,
-        orientation='h',
-        marker_color=factor_colors,
-        text=[f'{v:.1f}' for v in factor_values],
-        textposition='auto'
-    ))
-    fig_imp.update_layout(
-        title="Feature Importance — What Drives This Prediction",
-        xaxis_title="SHAP Importance Score",
-        height=400,
-        yaxis=dict(autorange="reversed")
-    )
-    st.plotly_chart(fig_imp, use_container_width=True)
+    rho_w = calculate_water_density(
+        salinity_ppm, T_F, Pi)
+    rho_o = calculate_oil_density(
+        API, Bo, Rs, gamma_g)
+    delta_rho = round(rho_w - rho_o, 3)
 
-    # ── WELL SUMMARY TABLE ───────────────────────────
-    st.markdown("### 📋 Well Input Summary")
-    summary_data = {
-        'Parameter': [
-            'Permeability', 'Porosity',
-            'Oil Column Height', 'Mobility Ratio',
-            'Aquifer Strength', 'Production Rate',
-            'Aquifer Type', 'b Exponent',
-            'PI Trend', 'Pressure Maintenance'
-        ],
-        'Value': [
-            f'{permeability:.0f} md',
-            f'{porosity:.3f}',
-            f'{oil_column_height:.1f} ft',
-            f'{mobility_ratio:.2f}',
-            f'{aquifer_radius_ratio:.1f}',
-            f'{production_rate:.0f} bbl/day',
-            'Bottom Water' if aquifer_type==1 else 'Edge Water',
-            f'{b_exponent:.2f}',
-            f'{PI_trend:.4f}',
-            f'{pressure_maintenance:.2f}'
-        ],
-        'Risk Implication': [
-            '⚠️ High' if permeability > 1500 else '✅ Moderate',
-            '✅ Good' if porosity > 0.20 else '⚠️ Low',
-            '⚠️ Thin' if oil_column_height < 50 else '✅ Adequate',
-            '⚠️ Unfavorable' if mobility_ratio > 5 else '✅ Favorable',
-            '⚠️ Strong' if aquifer_radius_ratio > 6 else '✅ Moderate',
-            '⚠️ High' if production_rate > 3000 else '✅ Conservative',
-            '⚠️ Faster BT' if aquifer_type==1 else '✅ Slower BT',
-            '⚠️ Active Aquifer' if b_exponent > 0.7 else '✅ Weak Aquifer',
-            '⚠️ Water Signal' if PI_trend > 0.02 else '✅ Normal',
-            '⚠️ Aquifer Active' if pressure_maintenance > 0.7 else '✅ Depleting'
-        ]
-    }
-    st.dataframe(
-        pd.DataFrame(summary_data),
-        use_container_width=True,
-        hide_index=True
-    )
+    # ── Mobility Ratio ──────────────────────────
+    M, alpha = calculate_mobility_ratio(
+        krw_sor, kro_swc, mu_o, mu_w)
 
-    # ── FOOTER NOTE ──────────────────────────────────
-    st.markdown("---")
-    st.caption("""
-    ⚠️ Disclaimer: WaterWatch predictions are based on
-    synthetic Niger Delta reservoir data and machine
-    learning models. Results should be used as a
-    screening tool alongside conventional reservoir
-    engineering analysis. Not for standalone field
-    decisions without expert validation.
+    # ── Sobocinski-Cornelius ────────────────────
+    Z_SC, tD_SC, tBT_SC, err_SC = \
+        sobocinski_cornelius(
+            kh_eff, kv_eff, phi_eff,
+            h, hp, mu_o, Bo, Qo,
+            rho_w, rho_o, M, alpha
+        )
 
-    📚 University of Benin — Petroleum Engineering
-    Department — Final Year Project 2025/2026
-    """)
+    # ── Bournazel-Jeanson ───────────────────────
+    Z_BJ, tD_BJ, tBT_BJ, err_BJ = \
+        bournazel_jeanson(
+            kh_eff, kv_eff, phi_eff,
+            h, hp, mu_o, Bo, Qo,
+            rho_w, rho_o, M
+        )
 
-else:
-    # ── WELCOME SCREEN ───────────────────────────────
-    st.markdown("### 👋 Welcome to WaterWatch")
-    col1, col2, col3 = st.columns(3)
+    # ══════════════════════════════════════════
+    # DISPLAY RESULTS
+    # ══════════════════════════════════════════
+
+    st.header("📊 Prediction Results")
+
+    # ── Method Results Side by Side ────────────
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.info("""
-        **Step 1 — Select Scenario**
-        Choose a preset scenario from
-        the sidebar or enter custom
-        well parameters
-        """)
+        st.subheader("Method 1 — Sobocinski-Cornelius")
+        st.caption("Bottom Water Drive | Ahmed (2010) Eq 9-21 to 9-23")
+        if err_SC:
+            st.error(err_SC)
+        elif tBT_SC:
+            risk_SC = classify_risk(tBT_SC)
+            st.markdown(
+                f'<div class="{risk_SC["box"]}">'
+                f'<h2>{risk_SC["symbol"]} '
+                f'{risk_SC["category"]}</h2>'
+                f'<h3>Breakthrough in {tBT_SC} days'
+                f' ({tBT_SC/365:.1f} years)</h3>'
+                f'<p><b>Action:</b> '
+                f'{risk_SC["action"]}</p>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.metric("Z (Cone Height)", Z_SC)
+            st.metric("(tD)BT", tD_SC)
+
     with col2:
-        st.info("""
-        **Step 2 — Enter Parameters**
-        Fill in reservoir properties,
-        fluid data, and early production
-        signals across the three tabs
-        """)
-    with col3:
-        st.info("""
-        **Step 3 — Run Prediction**
-        Click the prediction button
-        to get risk category,
-        breakthrough time, and
-        recommended actions
+        st.subheader("Method 2 — Bournazel-Jeanson")
+        st.caption("Edge Water Drive | SPE-3628")
+        if err_BJ:
+            st.error(err_BJ)
+        elif tBT_BJ:
+            risk_BJ = classify_risk(tBT_BJ)
+            st.markdown(
+                f'<div class="{risk_BJ["box"]}">'
+                f'<h2>{risk_BJ["symbol"]} '
+                f'{risk_BJ["category"]}</h2>'
+                f'<h3>Breakthrough in {tBT_BJ} days'
+                f' ({tBT_BJ/365:.1f} years)</h3>'
+                f'<p><b>Action:</b> '
+                f'{risk_BJ["action"]}</p>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.metric("Z (Cone Height)", Z_BJ)
+            st.metric("(tD)BT", tD_BJ)
+
+    st.divider()
+
+    # ── Intermediate Results ────────────────────
+    with st.expander(
+            "🔬 View Intermediate Calculations",
+            expanded=False):
+
+        col3, col4, col5 = st.columns(3)
+
+        with col3:
+            st.subheader("Rock Corrections")
+            st.metric(
+                "kh effective",
+                f"{kh_eff} md",
+                delta=f"{kh_eff-kh_mean:.1f} md"
+            )
+            st.metric(
+                "kv effective",
+                f"{kv_eff} md",
+                delta=f"{kv_eff-kv_matrix:.2f} md"
+            )
+            st.metric(
+                "φ effective",
+                f"{phi_eff}",
+                delta=f"{phi_eff-phi_log:.4f}"
+            )
+
+        with col4:
+            st.subheader("Fluid Properties")
+            st.metric("Oil Viscosity μo",
+                      f"{mu_o} cp")
+            st.metric("Oil FVF Bo",
+                      f"{Bo} bbl/STB")
+            st.metric("Water Density ρw",
+                      f"{rho_w} lb/ft³")
+            st.metric("Oil Density ρo",
+                      f"{rho_o} lb/ft³")
+            st.metric("Δρ",
+                      f"{delta_rho} lb/ft³")
+            if pvt_option == \
+               "Calculate from correlations":
+                st.metric("Bubble Point Pb",
+                          f"{Pb} psia")
+                st.info(f"Condition: {condition}")
+
+        with col5:
+            st.subheader("Mobility")
+            st.metric("Mobility Ratio M", M)
+            st.metric("Alpha (α)", alpha)
+            if M <= 1:
+                st.success(
+                    "✅ Favorable displacement"
+                )
+            elif M <= 5:
+                st.warning(
+                    "⚠️ Unfavorable displacement"
+                )
+            else:
+                st.error(
+                    "❌ Highly unfavorable"
+                )
+
+    st.divider()
+
+    # ── SCI Sensitivity Analysis ────────────────
+    st.subheader(
+        "📈 Shale Continuity Index (SCI) "
+        "Sensitivity Analysis"
+    )
+    st.caption(
+        "★ Novel contribution of this study — "
+        "Shows how shale continuity in the "
+        "Agbada Formation affects breakthrough time"
+    )
+
+    sci_df = run_sci_sensitivity(
+        kh_eff, kv_matrix, phi_eff,
+        h, hp, mu_o, Bo, Qo,
+        rho_w, rho_o, M, alpha, Vsh
+    )
+
+    if not sci_df.empty:
+        col6, col7 = st.columns([2, 1])
+
+        with col6:
+            # SCI Chart
+            fig = go.Figure()
+
+            # Color zones
+            fig.add_hrect(
+                y0=0, y1=365,
+                fillcolor="red",
+                opacity=0.1,
+                annotation_text="HIGH RISK",
+                annotation_position="left"
+            )
+            fig.add_hrect(
+                y0=365, y1=730,
+                fillcolor="orange",
+                opacity=0.1,
+                annotation_text="MEDIUM RISK",
+                annotation_position="left"
+            )
+            fig.add_hrect(
+                y0=730,
+                y1=sci_df['tBT_days'].max()*1.2,
+                fillcolor="green",
+                opacity=0.1,
+                annotation_text="LOW RISK",
+                annotation_position="left"
+            )
+
+            fig.add_trace(go.Scatter(
+                x=sci_df['SCI'],
+                y=sci_df['tBT_days'],
+                mode='lines+markers',
+                name='Breakthrough Time',
+                line=dict(color='#1f77b4',
+                          width=3),
+                marker=dict(size=10,
+                            color='#1f77b4')
+            ))
+
+            # Mark current SCI
+            current_row = sci_df[
+                sci_df['SCI'] ==
+                min(sci_df['SCI'],
+                    key=lambda x: abs(x-SCI))
+            ]
+            if not current_row.empty:
+                fig.add_trace(go.Scatter(
+                    x=current_row['SCI'],
+                    y=current_row['tBT_days'],
+                    mode='markers',
+                    name=f'Your SCI = {SCI}',
+                    marker=dict(size=15,
+                                color='red',
+                                symbol='star')
+                ))
+
+            fig.update_layout(
+                title='Effect of Shale Continuity '
+                      'Index on Breakthrough Time',
+                xaxis_title='Shale Continuity '
+                             'Index (SCI)',
+                yaxis_title='Breakthrough Time '
+                             '(days)',
+                height=400,
+                showlegend=True
+            )
+            st.plotly_chart(fig,
+                           use_container_width=True)
+
+        with col7:
+            st.dataframe(
+                sci_df[[
+                    'SCI', 'tBT_days',
+                    'tBT_years', 'Risk'
+                ]].rename(columns={
+                    'tBT_days':  'BT (days)',
+                    'tBT_years': 'BT (years)',
+                }),
+                hide_index=True,
+                use_container_width=True
+            )
+
+            # Key insight
+            bt_range = (sci_df['tBT_days'].max() -
+                        sci_df['tBT_days'].min())
+            st.info(
+                f"📊 SCI Impact:\n"
+                f"SCI 0.0 → "
+                f"{sci_df['tBT_days'].min():.0f} days\n"
+                f"SCI 1.0 → "
+                f"{sci_df['tBT_days'].max():.0f} days\n"
+                f"Range: {bt_range:.0f} days "
+                f"({bt_range/365:.1f} years)"
+            )
+
+    st.divider()
+
+    # ── Comparison Chart ────────────────────────
+    if tBT_SC and tBT_BJ:
+        st.subheader("📊 Method Comparison")
+
+        fig2 = go.Figure()
+
+        methods = ['Sobocinski-Cornelius\n'
+                   '(Bottom Water)',
+                   'Bournazel-Jeanson\n'
+                   '(Edge Water)']
+        values  = [tBT_SC, tBT_BJ]
+        colors  = []
+
+        for v in values:
+            if v <= 365:
+                colors.append('red')
+            elif v <= 730:
+                colors.append('orange')
+            else:
+                colors.append('green')
+
+        fig2.add_trace(go.Bar(
+            x=methods,
+            y=values,
+            marker_color=colors,
+            text=[f'{v:.0f} days\n'
+                  f'({v/365:.1f} yrs)'
+                  for v in values],
+            textposition='outside'
+        ))
+
+        fig2.add_hline(
+            y=365,
+            line_dash="dash",
+            line_color="red",
+            annotation_text="365 days — "
+                           "High/Medium boundary"
+        )
+        fig2.add_hline(
+            y=730,
+            line_dash="dash",
+            line_color="orange",
+            annotation_text="730 days — "
+                           "Medium/Low boundary"
+        )
+
+        fig2.update_layout(
+            title='Breakthrough Time — '
+                  'Method Comparison',
+            yaxis_title='Breakthrough Time (days)',
+            height=400,
+            showlegend=False
+        )
+        st.plotly_chart(fig2,
+                       use_container_width=True)
+
+    st.divider()
+
+    # ── Project Information ─────────────────────
+    with st.expander("ℹ️ About WaterWatch"):
+        st.markdown("""
+        ### WaterWatch — Enhanced Sobocinski-Cornelius Framework
+
+        **Project:** Final Year Project — University of Benin
+        **Department:** Petroleum Engineering
+
+        ### Methods Used
+        - **Primary:** Sobocinski-Cornelius (1965) for bottom water drive
+          *(Ahmed, 2010, Equations 9-21 to 9-24)*
+        - **Comparison:** Bournazel-Jeanson (1971) for edge water drive
+          *(SPE-3628)*
+
+        ### Niger Delta Enhancements
+        | Enhancement | Formula | Reference |
+        |---|---|---|
+        | kh heterogeneity | kh_eff = kh × (1-V_DP) | Tuttle et al (1999) |
+        | kv shale barrier | kv_eff = kv × (1-Vsh×SCI) | Short & Stauble (1967) |
+        | ★ Novel SCI | SCI = 1 - NTG | This study |
+        | φ compaction | φ_eff = φ × exp(-0.000025×depth) | Athy (1930) |
+        | μo correlation | Beggs-Robinson | Ahmed (2010) Eq 2-121 |
+        | Bo correlation | Standing (1981) | Ahmed (2010) Eq 2-85 |
+        | Bubble point | Standing (1947) | Ahmed (2010) Eq 2-72 |
+        | ρw salinity | Salinity correction | Tuttle et al (1999) |
+
+        ### Risk Classification
+        - 🔴 **HIGH RISK:** Breakthrough ≤ 365 days
+        - 🟡 **MEDIUM RISK:** Breakthrough 366-730 days
+        - 🟢 **LOW RISK:** Breakthrough > 730 days
+
+        ### Key References
+        - Ahmed, T. (2010) *Reservoir Engineering Handbook*, 4th Ed.
+        - Sobocinski & Cornelius (1965) SPE-894
+        - Bournazel & Jeanson (1971) SPE-3628
+        - Tuttle et al. (1999) USGS OFR 99-50-H
         """)
 
-    st.markdown("### 📊 Model Performance Summary")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("CV Accuracy",     "84.9%", "5-fold validated")
-    c2.metric("R² Score",        "0.761", "Regression")
-    c3.metric("High Risk Recall","77%",   "Critical metric")
-    c4.metric("Training Wells",  "347",   "Niger Delta")
+# ── Default message ─────────────────────────────
+else:
+    st.info(
+        "👈 Enter your reservoir parameters "
+        "in the sidebar and click "
+        "**PREDICT BREAKTHROUGH** to run "
+        "the analysis."
+    )
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("""
+        ### 🪨 Rock Properties
+        Permeability, porosity, oil column,
+        perforation depth, reservoir depth
+        """)
+    with col_b:
+        st.markdown("""
+        ### 🧪 Fluid Properties
+        API gravity, temperature, GOR,
+        pressure, salinity
+        """)
+    with col_c:
+        st.markdown("""
+        ### ⚡ Production Data
+        Average production rate from
+        first 30 days of production
+        """)
