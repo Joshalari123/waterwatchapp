@@ -1057,6 +1057,132 @@ with tab2:
         # Get defaults from auto-fill or use standard
         av = st.session_state['auto_vals']
 
+        # ── Core Data Calculator ────────────
+        with st.expander(
+                "🧮 Core Data Calculator",
+                expanded=False):
+            st.caption(
+                "Calculate averages from core "
+                "plug data")
+
+            kh_input = st.text_area(
+                "Paste kh values (one per line)",
+                value="",
+                height=90,
+                placeholder=("3200\n2800\n900\n"
+                             "1800\n2500..."),
+                key='core_kh')
+            kv_input = st.text_area(
+                "Paste kv values (one per line)",
+                value="",
+                height=90,
+                placeholder=("480\n420\n135\n"
+                             "270\n375..."),
+                key='core_kv')
+            phi_input = st.text_area(
+                "Paste porosity values "
+                "(one per line)",
+                value="",
+                height=90,
+                placeholder=("0.29\n0.28\n0.19\n"
+                             "0.27..."),
+                key='core_phi')
+
+            if st.button(
+                    "📊 Calculate Averages",
+                    key='calc_core_btn',
+                    use_container_width=True):
+                try:
+                    # Parse inputs
+                    kh_list = [
+                        float(x.strip())
+                        for x in kh_input
+                        .strip().split('\n')
+                        if x.strip()]
+                    kv_list = [
+                        float(x.strip())
+                        for x in kv_input
+                        .strip().split('\n')
+                        if x.strip()]
+                    phi_list = [
+                        float(x.strip())
+                        for x in phi_input
+                        .strip().split('\n')
+                        if x.strip()]
+
+                    results = {}
+
+                    # kh - arithmetic mean
+                    if kh_list:
+                        kh_avg = float(
+                            np.mean(kh_list))
+                        results['kh'] = round(
+                            kh_avg, 1)
+
+                    # kv - harmonic mean
+                    if kv_list and all(
+                            k > 0 for k in kv_list):
+                        kv_hm = (len(kv_list) /
+                                 sum(1/k for k in
+                                     kv_list))
+                        results['kv'] = round(
+                            kv_hm, 2)
+
+                    # phi - arithmetic mean
+                    if phi_list:
+                        phi_avg = float(
+                            np.mean(phi_list))
+                        results['phi'] = round(
+                            phi_avg, 3)
+
+                    # Display results
+                    if results:
+                        st.success(
+                            "✅ Calculated:")
+                        if 'kh' in results:
+                            st.write(
+                                f"kh (arithmetic) "
+                                f"= {results['kh']} md "
+                                f"[{len(kh_list)} plugs]")
+                        if 'kv' in results:
+                            st.write(
+                                f"kv (harmonic) "
+                                f"= {results['kv']} md "
+                                f"[{len(kv_list)} plugs]")
+                        if 'phi' in results:
+                            st.write(
+                                f"φ (arithmetic) "
+                                f"= {results['phi']} "
+                                f"[{len(phi_list)} plugs]")
+
+                        # Update auto_vals
+                        if 'kh' in results:
+                            st.session_state[
+                                'auto_vals'][
+                                'kh'] = results['kh']
+                        if 'kv' in results:
+                            st.session_state[
+                                'auto_vals'][
+                                'kv'] = results['kv']
+                        if 'phi' in results:
+                            st.session_state[
+                                'auto_vals'][
+                                'phi'] = results['phi']
+
+                        st.info(
+                            "💡 Values saved. "
+                            "Refresh or scroll down "
+                            "to see them applied.")
+                    else:
+                        st.warning(
+                            "No valid numbers "
+                            "entered")
+
+                except ValueError as e:
+                    st.error(
+                        "❌ Invalid input. Enter "
+                        "one number per line only.")
+
         st.markdown("**🪨 Rock Properties**")
         kh_mean = st.number_input(
             "kh — Horizontal Perm (md)",
