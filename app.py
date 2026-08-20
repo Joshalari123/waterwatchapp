@@ -888,13 +888,146 @@ with tab1:
                 f"{len(xl.sheet_names)} sheets")
 
             with st.expander(
-                    "📊 Excel Contents"):
-                st.write("Available sheets:")
+                    "📊 Excel Sheet Preview"):
                 for sheet in xl.sheet_names:
-                    st.write(f"• {sheet}")
+                    st.write(f"**{sheet}**")
+                    try:
+                        preview = pd.read_excel(
+                            excel_file,
+                            sheet_name=sheet,
+                            nrows=5)
+                        st.dataframe(
+                            preview,
+                            hide_index=True,
+                            use_container_width=True)
+                    except:
+                        st.write(
+                            "(unable to preview)")
 
             st.session_state['excel_file'] = \
                 excel_file
+
+            # ── EXCEL VALUE EXTRACTION ────
+            st.markdown(
+                '<div class="section-hdr">'
+                '📥 Extract Values from Excel'
+                '</div>',
+                unsafe_allow_html=True)
+
+            st.caption(
+                "Select which well and sheets "
+                "contain your parameters")
+
+            excel_col1, excel_col2 = \
+                st.columns(2)
+
+            with excel_col1:
+                st.markdown("**Well Selection**")
+                well_id_excel = st.text_input(
+                    "Well ID/Name to extract",
+                    value=(
+                        meta.get('well_id', 'NDW-01')
+                        if 'meta' in dir()
+                        else 'NDW-01'),
+                    help="Well identifier as "
+                         "appears in Excel")
+
+            # Try to auto-extract from
+            # common sheet names
+            extracted = {
+                'kh': None, 'kv': None,
+                'API': None, 'temp': None,
+                'Rs': None, 'gg': None,
+                'Pi': None, 'sal': None,
+                'Qo': None, 'krw': None,
+                'kro': None
+            }
+
+            # Search all sheets for values
+            for sheet_name in xl.sheet_names:
+                try:
+                    sheet_df = pd.read_excel(
+                        excel_file,
+                        sheet_name=sheet_name)
+
+                    # Look for core-related sheet
+                    sname = sheet_name.lower()
+
+                    if ('core' in sname or
+                        'perm' in sname):
+                        # Look for kh, kv columns
+                        for col in sheet_df.columns:
+                            col_low = str(col).lower()
+                            if ('kh' in col_low and
+                                extracted['kh']
+                                is None):
+                                vals = sheet_df[col] \
+                                    .dropna()
+                                # Only numeric values
+                                num_vals = pd \
+                                    .to_numeric(
+                                        vals,
+                                        errors='coerce') \
+                                    .dropna()
+                                if len(num_vals) > 0:
+                                    extracted['kh'] = \
+                                        float(
+                                        num_vals.mean())
+                            if ('kv' in col_low and
+                                extracted['kv']
+                                is None):
+                                vals = sheet_df[col] \
+                                    .dropna()
+                                num_vals = pd \
+                                    .to_numeric(
+                                        vals,
+                                        errors='coerce') \
+                                    .dropna()
+                                if len(num_vals) > 0:
+                                    extracted['kv'] = \
+                                        float(
+                                        num_vals.mean())
+
+                except Exception as e:
+                    pass
+
+            # Show extracted values
+            with excel_col2:
+                st.markdown(
+                    "**Extracted Values**")
+                for key, val in extracted.items():
+                    if val is not None:
+                        st.write(
+                            f"{key}: "
+                            f"{val:.2f}")
+
+                if all(v is None for v in
+                       extracted.values()):
+                    st.info(
+                        "No parameters could be "
+                        "auto-extracted. Please "
+                        "enter manually in "
+                        "sidebar.")
+
+            # Update auto_vals with extracted
+            if extracted['kh'] is not None:
+                st.session_state['auto_vals'][
+                    'kh'] = extracted['kh']
+            if extracted['kv'] is not None:
+                st.session_state['auto_vals'][
+                    'kv'] = extracted['kv']
+
+            if any(v is not None for v in
+                   extracted.values()):
+                if st.button(
+                        "📥 Use Extracted Excel "
+                        "Values",
+                        type='primary',
+                        use_container_width=True,
+                        key='excel_use_btn'):
+                    st.success(
+                        "✅ Excel values added "
+                        "to auto-fill")
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -927,37 +1060,50 @@ with tab2:
         st.markdown("**🪨 Rock Properties**")
         kh_mean = st.number_input(
             "kh — Horizontal Perm (md)",
-            10.0, 5000.0, 1800.0, 10.0)
+            10.0, 10000.0,
+            float(min(10000.0, max(10.0,
+                av.get('kh', 1800.0)))),
+            10.0)
         kv_matrix = st.number_input(
             "kv — Vertical Perm (md)",
-            1.0, 1000.0, 270.0, 5.0)
+            1.0, 5000.0,
+            float(min(5000.0, max(1.0,
+                av.get('kv', 270.0)))),
+            5.0)
         phi_log = st.number_input(
             "φ — Porosity (fraction)",
             0.05, 0.45,
-            av.get('phi', 0.28), 0.01)
+            float(min(0.45, max(0.05,
+                av.get('phi', 0.28)))), 0.01)
         depth_ft = st.number_input(
             "Reservoir Depth (ft)",
-            1000.0, 15000.0,
-            av.get('depth', 8500.0), 100.0)
+            500.0, 20000.0,
+            float(min(20000.0, max(500.0,
+                av.get('depth', 8500.0)))),
+            100.0)
         h = st.number_input(
             "h — Oil Column (ft)",
-            5.0, 300.0,
-            float(av.get('h', 80.0)), 1.0)
+            5.0, 1000.0,
+            float(min(1000.0, max(5.0,
+                av.get('h', 80.0)))), 1.0)
         hp = st.number_input(
             "hp — Perforated (ft)",
-            1.0, 200.0,
-            float(av.get('hp', 25.0)), 1.0)
+            1.0, 500.0,
+            float(min(500.0, max(1.0,
+                av.get('hp', 25.0)))), 1.0)
 
         st.markdown(
             "**🌍 Niger Delta Corrections**")
         Vsh = st.slider(
             "Vsh — Shale Volume",
-            0.0, 0.5,
-            float(av.get('vsh', 0.15)), 0.01)
+            0.0, 1.0,
+            float(min(1.0, max(0.0,
+                av.get('vsh', 0.15)))), 0.01)
         SCI = st.slider(
             "SCI — Shale Continuity ★",
             0.0, 1.0,
-            float(av.get('sci', 0.50)), 0.05,
+            float(min(1.0, max(0.0,
+                av.get('sci', 0.50)))), 0.05,
             help="Novel parameter this study")
 
         st.markdown("**🧪 Fluid Properties**")
