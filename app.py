@@ -1232,6 +1232,58 @@ with tab2:
                 av.get('sci', 0.50)))), 0.05,
             help="Novel parameter this study")
 
+        # ── Anisotropy option ─────────────
+        use_keff = st.checkbox(
+            "Apply Anisotropy Correction "
+            "(Bear 1972)",
+            value=False,
+            help="Uses k_eff = √(kh × kv) for "
+                 "radial flow. Note: Combined "
+                 "with SCI this may over-correct. "
+                 "Best used alone or with "
+                 "recalibrated α.")
+
+        # ── Calibration factor α ─────────
+        st.markdown("**⚖️ Regional Calibration**")
+
+        reservoir_type = st.selectbox(
+            "Reservoir Type",
+            ["Thin oil rim (onshore) — "
+             "Validated ADX",
+             "Onshore Niger Delta - typical",
+             "Shallow offshore",
+             "Deep offshore / turbidite",
+             "Heavy oil reservoir",
+             "Custom α"],
+            help="Sets default α based on "
+                 "reservoir characteristics")
+
+        # Default α by type
+        # Note: These α values are calibrated
+        # WITH SCI + Athy corrections applied
+        # NOT for use with k_eff option
+        alpha_defaults = {
+            "Thin oil rim (onshore) — "
+            "Validated ADX": 1.76,
+            "Onshore Niger Delta - typical":
+                1.80,
+            "Shallow offshore": 2.00,
+            "Deep offshore / turbidite": 2.50,
+            "Heavy oil reservoir": 3.80,
+            "Custom α": 1.00
+        }
+
+        default_alpha = alpha_defaults[
+            reservoir_type]
+
+        alpha_cal = st.slider(
+            "α — Calibration Factor",
+            0.5, 5.0, default_alpha, 0.05,
+            help="Regional calibration factor. "
+                 "1.59 validated on ADX Oilfield "
+                 "(Okon et al 2018). "
+                 "Adjust for well-specific data.")
+
         st.markdown("**🧪 Fluid Properties**")
         pvt_mode = st.radio(
             "PVT Source",
@@ -1347,14 +1399,30 @@ with tab2:
             rw, ro, M, alpha)
 
         # ─── Enhanced Sobocinski ─────────────
+        # Anisotropy correction (Bear 1972)
+        if use_keff:
+            kh_use = np.sqrt(
+                kh_mean * kv_matrix)
+        else:
+            kh_use = kh_mean
+
+        # Athy compaction on porosity
         phi_eff = phi_log * np.exp(
             -0.000027 * depth_ft)
+
+        # SCI correction on kv
         kv_eff = kv_matrix * (1 - Vsh * SCI)
 
-        Z2, tD2, tBT2, err2 = sobocinski(
-            kh_mean, kv_eff, phi_eff,
+        Z2, tD2, tBT2_raw, err2 = sobocinski(
+            kh_use, kv_eff, phi_eff,
             h, hp, mu_o, Bo, Qo,
             rw, ro, M, alpha)
+
+        # Apply calibration factor α
+        if tBT2_raw is not None:
+            tBT2 = round(tBT2_raw * alpha_cal, 1)
+        else:
+            tBT2 = None
 
         st.markdown('<div class="section-hdr">'
                     '📊 Prediction Results</div>',
@@ -1386,7 +1454,7 @@ with tab2:
         with col2:
             st.markdown("#### Method 2 — "
                         "Enhanced Sobocinski ★")
-            st.caption("With SCI + Athy")
+            st.caption(f"With Anisotropy + SCI + Athy + α={alpha_cal}")
             if err2:
                 st.error(f"❌ {err2}")
             elif tBT2:
@@ -1465,8 +1533,16 @@ with tab2:
                          f"{kv_matrix} md")
                 st.write(f"kv_effective: "
                          f"{kv_eff:.2f} md")
-                st.write(f"kh (unchanged): "
-                         f"{kh_mean} md")
+                if use_keff:
+                    st.write(f"kh_original: "
+                             f"{kh_mean} md")
+                    st.write(f"k_eff = √(kh×kv): "
+                             f"{kh_use:.2f} md")
+                    st.write(f"(Bear 1972 "
+                             f"anisotropy)")
+                else:
+                    st.write(f"kh (unchanged): "
+                             f"{kh_mean} md")
 
             with cI2:
                 st.markdown(
@@ -1481,12 +1557,14 @@ with tab2:
                     st.write(f"Cond: {cond}")
 
             with cI3:
-                st.markdown("**Densities**")
+                st.markdown("**Calibration**")
+                st.write(f"Reservoir type:")
+                st.write(f"{reservoir_type}")
+                st.write(f"α applied: {alpha_cal}")
                 st.write(f"ρw: {rw} lb/ft³")
                 st.write(f"ρo: {ro} lb/ft³")
                 st.write(f"Δρ: {rw-ro:.3f}")
-                st.write(f"M: {M}")
-                st.write(f"α: {alpha}")
+                st.write(f"M: {M} | α_mob: {alpha}")
 
         st.session_state['pred_params'] = {
             'kh': kh_mean, 'kv_mat': kv_matrix,
