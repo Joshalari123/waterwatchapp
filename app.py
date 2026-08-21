@@ -503,45 +503,62 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ Reservoir Parameters")
 
-    # ADX Preset Button
-    if st.button("📋 Load ADX Oilfield "
-                 "(Validation Case)",
-                 use_container_width=True):
-        st.session_state['use_adx'] = True
+    # Preset buttons
+    st.markdown("**📋 Load Validation Presets:**")
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        if st.button("🇳🇬 ADX (Niger)",
+                     use_container_width=True):
+            st.session_state['preset'] = 'adx'
+    with col_p2:
+        if st.button("🇮🇶 Iraqi Field",
+                     use_container_width=True):
+            st.session_state['preset'] = 'iraq'
 
-    use_adx = st.session_state.get(
-        'use_adx', False)
+    if st.button("🔄 Clear Preset",
+                 use_container_width=True):
+        st.session_state['preset'] = None
+
+    preset = st.session_state.get('preset', None)
+    use_adx = (preset == 'adx')
+    use_iraq = (preset == 'iraq')
 
     st.markdown("**🪨 Rock Properties**")
     kh = st.number_input(
         "kh — Horizontal Perm (mD)",
         1.0, 10000.0,
-        20.074 if use_adx else 500.0,
+        20.074 if use_adx else
+        100.0 if use_iraq else 500.0,
         1.0)
     kv = st.number_input(
         "kv — Vertical Perm (mD)",
         0.1, 5000.0,
-        2.0074 if use_adx else 80.0,
+        2.0074 if use_adx else
+        50.0 if use_iraq else 80.0,
         0.5)
     phi = st.number_input(
         "φ — Porosity (fraction)",
         0.05, 0.45,
-        0.168 if use_adx else 0.25,
+        0.168 if use_adx else
+        0.20 if use_iraq else 0.25,
         0.01)
     h = st.number_input(
         "h — Oil Column (ft)",
         5.0, 500.0,
-        85.0 if use_adx else 60.0,
+        85.0 if use_adx else
+        100.0 if use_iraq else 60.0,
         1.0)
     hp = st.number_input(
         "hp — Perforated Interval (ft)",
         1.0, 300.0,
-        8.5 if use_adx else 20.0,
+        8.5 if use_adx else
+        35.0 if use_iraq else 20.0,
         0.5)
     hap = st.number_input(
         "hap — Height Above Perforation (ft)",
         1.0, 200.0,
-        6.0 if use_adx else 15.0,
+        6.0 if use_adx else
+        5.0 if use_iraq else 15.0,
         0.5,
         help="Distance from top of "
              "perforation to top of oil column. "
@@ -550,8 +567,9 @@ with st.sidebar:
     st.markdown("**🌍 Well Geometry**")
     re = st.number_input(
         "re — Drainage Radius (ft)",
-        100.0, 5000.0,
-        2938.0 if use_adx else 1000.0,
+        100.0, 10000.0,
+        2938.0 if use_adx else
+        7500.0 if use_iraq else 1000.0,
         50.0)
 
     st.markdown("**🧪 Fluid Properties**")
@@ -564,27 +582,32 @@ with st.sidebar:
         mu_o = st.number_input(
             "μo — Oil Viscosity (cp)",
             0.1, 100.0,
-            0.972 if use_adx else 0.6,
+            0.972 if use_adx else
+            1.0 if use_iraq else 0.6,
             0.01)
         mu_w = st.number_input(
             "μw — Water Viscosity (cp)",
             0.1, 5.0,
-            0.246 if use_adx else 0.5,
+            0.246 if use_adx else
+            0.3 if use_iraq else 0.5,
             0.01)
         Bo = st.number_input(
             "Bo (bbl/STB)",
             1.0, 3.0,
-            1.15 if use_adx else 1.34,
+            1.15 if use_adx else
+            1.2 if use_iraq else 1.34,
             0.01)
         rho_o = st.number_input(
             "ρo — Oil Density (lb/ft³)",
             30.0, 65.0,
-            53.563 if use_adx else 50.0,
+            53.563 if use_adx else
+            45.95 if use_iraq else 50.0,
             0.1)
         rho_w = st.number_input(
             "ρw — Water Density (lb/ft³)",
             60.0, 75.0,
-            64.114 if use_adx else 63.0,
+            64.114 if use_adx else
+            63.8 if use_iraq else 63.0,
             0.1)
     else:
         API = st.number_input(
@@ -611,16 +634,23 @@ with st.sidebar:
     st.markdown("**💧 Relative Permeability**")
     krw = st.number_input(
         "krw at Sor",
-        0.1, 0.8, 0.35, 0.05)
+        0.05, 1.0,
+        0.35 if use_adx else
+        0.5 if use_iraq else 0.35,
+        0.05)
     kro = st.number_input(
         "kro at Swc",
-        0.3, 1.0, 0.85, 0.05)
+        0.05, 1.0,
+        0.85 if use_adx else
+        0.11 if use_iraq else 0.85,
+        0.05)
 
     st.markdown("**⚡ Production**")
     Qo = st.number_input(
         "Qo (STB/day)",
         10.0, 10000.0,
-        226.11 if use_adx else 1000.0,
+        226.11 if use_adx else
+        1500.0 if use_iraq else 1000.0,
         10.0)
 
     st.markdown("---")
@@ -630,8 +660,15 @@ with st.sidebar:
         use_container_width=True)
 
     if use_adx:
-        st.info("ADX Oilfield preset active. "
-                "Actual BT: 1653 days")
+        st.info("🇳🇬 ADX Oilfield preset active.\n\n"
+                "**Actual BT: 1653 days**\n\n"
+                "Source: Okon et al 2018")
+    elif use_iraq:
+        st.info("🇮🇶 Iraqi Field preset active.\n\n"
+                "**Actual BT at Qo=1500: 424 days**\n\n"
+                "Source: Al-Sudani & Faleh 2019\n\n"
+                "Try Qo: 800→924d, 1500→424d,\n"
+                "2500→195d, 3500→125d, 5000→80d")
 
 # ═══════════════════════════════════════════════════════════════════
 # TABS
@@ -770,132 +807,171 @@ with tab1:
         classical_min = None
         classical_max = None
 
-    # ─── TWO-TIER PREDICTION CARD ──
+    # ─── ALL 5 METHODS DISPLAYED EQUALLY ─
     st.markdown('<div class="section-hdr">'
-                '🎯 Prediction Bounds Analysis'
+                '🎯 Individual Method Predictions'
                 '</div>',
                 unsafe_allow_html=True)
 
-    col_lb, col_ub = st.columns(2)
+    method_info = [
+        ("Sobocinski Standard", tBT_1,
+         "Ahmed (2010)", "#3498db"),
+        ("Sobocinski Original", tBT_2,
+         "1965", "#e74c3c"),
+        ("Bournazel-Jeanson", tBT_3,
+         "1971", "#9b59b6"),
+        ("Yang-Wattenbarger", tBT_4,
+         "1991", "#2ecc71"),
+        ("Okon et al Niger Delta", tBT_5,
+         "2018", "#f39c12")
+    ]
 
-    with col_lb:
-        if classical_mean:
-            r_low = risk_level(
-                classical_mean)
-            st.markdown(f"""
-            <div class="ensemble-card"
-            style="border-left-color: #e74c3c;">
-                <h3 style="color: #e74c3c !important;">
-                🔻 LOWER BOUND (Classical)</h3>
-                <h2>{r_low['icon']}
-                {classical_mean:.0f} days
-                ({classical_mean/365:.2f} yr)</h2>
-                <p><b>Risk:</b> {r_low['cat']}</p>
-                <p><b>Method range:</b>
-                {classical_min:.0f} to
-                {classical_max:.0f} days</p>
-                <p><b>Based on:</b> Sobocinski
-                Standard, Sobocinski Original,
-                Bournazel-Jeanson, Yang-Wattenbarger
-                </p>
-                <p style="color: #f8b4b0 !important;
-                margin-top: 10px;">
-                <b>Use for:</b> Conservative water
-                handling facility design and
-                early warning planning</p>
-            </div>
-            """, unsafe_allow_html=True)
+    # Display in 2 rows of columns
+    row1 = st.columns(3)
+    row2 = st.columns(2)
 
-    with col_ub:
-        if okon_pred:
-            r_up = risk_level(okon_pred)
-            st.markdown(f"""
-            <div class="ensemble-card"
-            style="border-left-color: #27ae60;">
-                <h3 style="color: #27ae60 !important;">
-                🔺 UPPER BOUND / MOST LIKELY (Okon)</h3>
-                <h2>{r_up['icon']}
-                {okon_pred:.0f} days
-                ({okon_pred/365:.2f} yr)</h2>
-                <p><b>Risk:</b> {r_up['cat']}</p>
-                <p><b>Method:</b> Okon et al 2018
-                (Niger Delta specific)</p>
-                <p><b>Note:</b> Regionally calibrated
-                for Niger Delta bottom water drive
-                reservoirs</p>
-                <p style="color: #a9dfbf !important;
-                margin-top: 10px;">
-                <b>Use for:</b> Best estimate for
-                economic evaluation and long-term
-                production planning</p>
-            </div>
-            """, unsafe_allow_html=True)
+    for idx, (name, pred, yr, color) in \
+            enumerate(method_info):
+        col = row1[idx] if idx < 3 \
+              else row2[idx - 3]
 
-    # ─── COMBINED INTERPRETATION ───
-    if classical_mean and okon_pred:
-        divergence = okon_pred / classical_mean
+        with col:
+            if pred is not None and pred > 0:
+                r = risk_level(pred)
+                st.markdown(f"""
+                <div style="background: #1e2b3d;
+                border-left: 5px solid {color};
+                padding: 15px; border-radius: 8px;
+                margin: 5px 0; height: 180px;">
+                <h4 style="color: {color} !important;
+                margin: 0 0 8px 0;
+                font-size: 1.0rem;">
+                {name}</h4>
+                <p style="color: #bdc3c7 !important;
+                font-size: 0.8rem;
+                margin: 2px 0;">
+                {yr}</p>
+                <h3 style="color: white !important;
+                margin: 8px 0;
+                font-size: 1.5rem;">
+                {r['icon']} {pred:.0f} days</h3>
+                <p style="color: #ecf0f1 !important;
+                font-size: 0.85rem;
+                margin: 2px 0;">
+                {pred/365:.2f} years<br>
+                Risk: <b>{r['cat']}</b></p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style="background: #2c1e1e;
+                border-left: 5px solid #7f8c8d;
+                padding: 15px; border-radius: 8px;
+                margin: 5px 0; height: 180px;">
+                <h4 style="color: {color} !important;
+                margin: 0 0 8px 0;">
+                {name}</h4>
+                <p style="color: #bdc3c7 !important;">
+                {yr}</p>
+                <h3 style="color: #7f8c8d !important;
+                margin: 8px 0;">
+                ⚪ Unable</h3>
+                <p style="color: #bdc3c7 !important;
+                font-size: 0.85rem;">
+                Parameters out of range</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ─── PREDICTION RANGE SUMMARY ────
+    valid_preds = [p for p in predictions
+                    if p is not None and p > 0]
+
+    if len(valid_preds) >= 2:
+        pred_min = min(valid_preds)
+        pred_max = max(valid_preds)
+        pred_mean = np.mean(valid_preds)
+        pred_median = np.median(valid_preds)
+
+        st.markdown('<div class="section-hdr">'
+                    '📊 Overall Prediction Range'
+                    '</div>',
+                    unsafe_allow_html=True)
+
+        r_med = risk_level(pred_median)
 
         st.markdown(f"""
         <div class="ensemble-card">
-        <h3 style="color: #f39c12 !important;">
-        📊 Combined Engineering Interpretation</h3>
-        <p><b>Expected breakthrough range:</b>
-        {classical_mean:.0f} to
-        {okon_pred:.0f} days</p>
-        <p><b>Method divergence factor:</b>
-        {divergence:.1f}x</p>
-        <p><b>Engineering recommendation:</b>
-        Plan water handling facilities to be
-        operational by day
-        {classical_mean:.0f} (classical lower
-        bound). Expected breakthrough more
-        likely around day {okon_pred:.0f}
-        (Okon Niger Delta calibration).</p>
+        <h2>{r_med['icon']} Predicted Breakthrough
+        Range: {pred_min:.0f} to
+        {pred_max:.0f} days</h2>
+        <h3>Median estimate: {pred_median:.0f}
+        days ({pred_median/365:.2f} years) —
+        Risk: {r_med['cat']}</h3>
+        <p><b>Number of valid predictions:</b>
+        {len(valid_preds)} of 5 methods</p>
+        <p><b>Spread:</b> {pred_max - pred_min:.0f}
+        days between shortest and longest
+        prediction</p>
         </div>
         """, unsafe_allow_html=True)
 
-        if divergence > 5:
-            st.markdown("""
-            <div class="warning-card">
-            <b>⚠️ High method divergence detected.</b>
-            Classical analytical methods significantly
-            underpredict compared to Niger Delta
-            calibrated correlation. This is consistent
-            with published observations that classical
-            correlations underestimate breakthrough
-            time for Niger Delta reservoirs.
-            Recommend using Okon estimate for economic
-            planning and classical estimate for
-            facility timing.
-            </div>
-            """, unsafe_allow_html=True)
+        col_s1, col_s2, col_s3, col_s4 = \
+            st.columns(4)
+        col_s1.metric("Minimum",
+                       f"{pred_min:.0f} d",
+                       f"{pred_min/365:.2f} yr")
+        col_s2.metric("Mean",
+                       f"{pred_mean:.0f} d",
+                       f"{pred_mean/365:.2f} yr")
+        col_s3.metric("Median",
+                       f"{pred_median:.0f} d",
+                       f"{pred_median/365:.2f} yr")
+        col_s4.metric("Maximum",
+                       f"{pred_max:.0f} d",
+                       f"{pred_max/365:.2f} yr")
 
     # ─── DETAILED STATISTICS ─────────
     with st.expander(
             "📊 Detailed Statistical Summary"):
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Mean",
-                    f"{ensemble['mean']} d",
-                    f"{ensemble['mean']/365:.2f} yr")
-        col2.metric("Median (P50)",
-                    f"{ensemble['median']} d",
-                    f"{ensemble['median']/365:.2f} yr")
-        col3.metric("P10 (Early)",
-                    f"{ensemble['p10']} d",
-                    f"{ensemble['p10']/365:.2f} yr")
-        col4.metric("P90 (Late)",
-                    f"{ensemble['p90']} d",
-                    f"{ensemble['p90']/365:.2f} yr")
+        if ensemble.get('classical_mean'):
+            st.markdown("**Classical Methods "
+                        "(4 methods):**")
+            col1, col2, col3, col4 = \
+                st.columns(4)
+            col1.metric(
+                "Classical Mean",
+                f"{ensemble['classical_mean']} d",
+                f"{ensemble['classical_mean']/365:.2f} yr")
+            col2.metric(
+                "Classical Median",
+                f"{ensemble['classical_median']} d")
+            col3.metric(
+                "Classical Min",
+                f"{ensemble['classical_min']} d")
+            col4.metric(
+                "Classical Max",
+                f"{ensemble['classical_max']} d")
 
-        col5, col6, col7, col8 = st.columns(4)
-        col5.metric("Minimum",
-                    f"{ensemble['min']} d")
-        col6.metric("Maximum",
-                    f"{ensemble['max']} d")
-        col7.metric("Std Deviation",
-                    f"{ensemble['std']} d")
-        col8.metric("Range",
-                    f"{ensemble['range']} d")
+        if ensemble.get('okon'):
+            st.markdown("**Niger Delta Method:**")
+            col5, col6 = st.columns(2)
+            col5.metric(
+                "Okon 2018",
+                f"{ensemble['okon']} d",
+                f"{ensemble['okon']/365:.2f} yr")
+            col6.metric(
+                "Recommended (best est.)",
+                f"{ensemble.get('recommended', 0):.0f} d")
+
+        if ensemble.get('overall_min'):
+            st.markdown("**Overall Range:**")
+            col7, col8, col9 = st.columns(3)
+            col7.metric("Min",
+                        f"{ensemble['overall_min']} d")
+            col8.metric("Max",
+                        f"{ensemble['overall_max']} d")
+            col9.metric("Range",
+                        f"{ensemble['overall_range']} d")
 
     # ─── VISUALIZATION ───────────────
     st.markdown('<div class="section-hdr">'
@@ -925,26 +1001,23 @@ with tab1:
         textfont=dict(size=13, color='white'),
         name='Individual Predictions'))
 
-    # Add ensemble reference lines
-    fig.add_hline(
-        y=ensemble['median'],
-        line_dash="dash",
-        line_color="#f39c12",
-        annotation_text=f"P50: "
-                        f"{ensemble['median']:.0f}d",
-        annotation_position="right")
-    fig.add_hline(
-        y=ensemble['p10'],
-        line_dash="dot",
-        line_color="#27ae60",
-        annotation_text=f"P10: "
-                        f"{ensemble['p10']:.0f}d")
-    fig.add_hline(
-        y=ensemble['p90'],
-        line_dash="dot",
-        line_color="#c0392b",
-        annotation_text=f"P90: "
-                        f"{ensemble['p90']:.0f}d")
+    # Add reference lines using new keys
+    if ensemble.get('classical_mean'):
+        fig.add_hline(
+            y=ensemble['classical_mean'],
+            line_dash="dash",
+            line_color="#e74c3c",
+            annotation_text=f"Classical Mean: "
+                             f"{ensemble['classical_mean']:.0f}d",
+            annotation_position="right")
+    if ensemble.get('okon'):
+        fig.add_hline(
+            y=ensemble['okon'],
+            line_dash="dash",
+            line_color="#27ae60",
+            annotation_text=f"Okon: "
+                             f"{ensemble['okon']:.0f}d",
+            annotation_position="right")
 
     fig.update_layout(
         title="Individual Method Predictions "
@@ -1346,7 +1419,18 @@ with tab4:
     <p><b>Reservoir Type:</b> Thin Oil Rim,
     Bottom Water Drive</p>
     <p><b>Actual Field Breakthrough:</b> 1653
-    days (4.53 years)</p>
+    days (4.53 years) — from ADX Oilfield
+    production history</p>
+    <p><b>Important Note:</b> The Okon 2018
+    correlation was DEVELOPED using ADX
+    Oilfield data through regression fitting.
+    Therefore its near-perfect match here
+    (0.2% error) is expected and does NOT
+    represent independent validation for
+    this specific well. The other four
+    classical methods provide independent
+    predictions since they were not
+    calibrated on this dataset.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1469,11 +1553,23 @@ with tab4:
     of Engineering Sciences, 26(3): 73-81.
     DOI: 10.33261/jaaru.2019.26.3.009</p>
     <p><b>Reservoir Type:</b> Homogeneous
-    anisotropic bottom water drive
-    (ECLIPSE simulated)</p>
-    <p><b>Validation:</b> 5 different oil
-    production rates tested against
-    ECLIPSE numerical simulator</p>
+    anisotropic bottom water drive</p>
+    <p><b>Reference Values:</b> ECLIPSE
+    numerical simulation results across
+    5 production rates. ECLIPSE is the
+    industry-standard reservoir simulator
+    and represents the "gold standard"
+    reference commonly used to validate
+    analytical correlations in petroleum
+    engineering literature.</p>
+    <p><b>Note:</b> The comparison here is
+    between analytical correlations and
+    numerical simulation output — a
+    standard validation approach where
+    numerical simulation provides the
+    physical reference against which
+    simplified analytical methods are
+    evaluated.</p>
     </div>
     """, unsafe_allow_html=True)
 
