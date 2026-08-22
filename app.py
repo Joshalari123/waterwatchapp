@@ -1283,7 +1283,6 @@ with tab3:
 
     m1_list, m2_list, m3_list = [], [], []
     m4_list, m5_list = [], []
-    p50_list = []
 
     for v in vary:
         # Set parameter
@@ -1328,14 +1327,6 @@ with tab3:
         m4_list.append(r4)
         m5_list.append(r5)
 
-        preds = [r for r in [r1, r2, r3, r4, r5]
-                 if r is not None]
-        if len(preds) >= 2:
-            p50_list.append(
-                float(np.median(preds)))
-        else:
-            p50_list.append(None)
-
     fig_s = go.Figure()
     fig_s.add_trace(go.Scatter(
         x=vary, y=m1_list, mode='lines',
@@ -1357,11 +1348,6 @@ with tab3:
         x=vary, y=m5_list, mode='lines',
         name='Okon (2018)',
         line=dict(color='#f39c12', width=2)))
-    fig_s.add_trace(go.Scatter(
-        x=vary, y=p50_list, mode='lines',
-        name='Ensemble P50',
-        line=dict(color='white', width=3,
-                   dash='dash')))
 
     fig_s.update_layout(
         title=f"Sensitivity to {sens_param}",
@@ -1381,12 +1367,15 @@ with tab3:
     <ul>
     <li>Each colored line represents one
         prediction method</li>
-    <li>The white dashed line shows the
-        ensemble P50 (median)</li>
-    <li>Where methods agree → high confidence
-        prediction</li>
-    <li>Where methods diverge → higher
-        uncertainty, use ensemble range</li>
+    <li>Where methods agree closely, the
+        general prediction trend is more
+        consistent</li>
+    <li>Where methods diverge widely,
+        this indicates significant
+        method-dependent uncertainty</li>
+    <li>Compare individual method
+        predictions against the base case
+        result in Tab 1</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
