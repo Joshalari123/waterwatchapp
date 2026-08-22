@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
 # WATERWATCH
-# Ensemble Framework for Water Breakthrough Time Prediction
+# Comparative Framework for Water Breakthrough Time Prediction
 # in Niger Delta Vertical Wells
 #
 # University of Benin
@@ -9,7 +9,7 @@
 #
 # METHODOLOGY:
 # Five established published correlations evaluated simultaneously
-# with uncertainty quantification via P10/P50/P90 range
+# for comparative analysis and documentation of method behavior
 # ═══════════════════════════════════════════════════════════════════
 
 import streamlit as st
@@ -21,7 +21,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 st.set_page_config(
-    page_title="WaterWatch | Ensemble Framework",
+    page_title="WaterWatch | Comparative Framework",
     page_icon="💧",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -488,9 +488,9 @@ def compute_ensemble_statistics(predictions):
 st.markdown("""
 <div class="main-header">
     <h1>💧 WaterWatch</h1>
-    <p><b>Ensemble Framework for Water Breakthrough Time Prediction</b></p>
+    <p><b>Comparative Framework for Water Breakthrough Time Prediction</b></p>
     <p>Niger Delta Vertical Wells | 5 Established Correlations |
-    Uncertainty Quantification via P10/P50/P90</p>
+    Systematic Method Comparison and Analysis</p>
     <p>University of Benin | Department of
     Petroleum Engineering | Final Year Project</p>
 </div>
@@ -655,7 +655,7 @@ with st.sidebar:
 
     st.markdown("---")
     run_btn = st.button(
-        "🔍 RUN ENSEMBLE ANALYSIS",
+        "🔍 RUN COMPARATIVE ANALYSIS",
         type="primary",
         use_container_width=True)
 
@@ -675,7 +675,7 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════════════
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🎯 Ensemble Results",
+    "🎯 Comparative Results",
     "📊 Method Comparison",
     "📈 Sensitivity Analysis",
     "🔬 Validation Cases",
@@ -688,19 +688,19 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
 with tab1:
     st.markdown('<div class="section-hdr">'
-                '🎯 Ensemble Prediction Results'
+                '🎯 Comparative Prediction Results'
                 '</div>',
                 unsafe_allow_html=True)
 
     if not run_btn:
         st.info("👈 Enter parameters in the "
                 "sidebar and click "
-                "**RUN ENSEMBLE ANALYSIS**")
+                "**RUN COMPARATIVE ANALYSIS**")
 
         st.markdown("""
         <div class="info-card">
-        <h4>About the Ensemble Framework</h4>
-        <p>This tool evaluates <b>five established
+        <h4>About the Comparative Framework</h4>
+        <p>This tool implements <b>five established
         published correlations</b> for water
         breakthrough time in vertical wells:</p>
         <ol>
@@ -712,11 +712,20 @@ with tab1:
         <li>Yang-Wattenbarger (1991)</li>
         <li>Okon et al Niger Delta (2018)</li>
         </ol>
-        <p>Rather than selecting one "best" method,
-        the framework provides a <b>prediction
-        range</b> with P10/P50/P90 estimates to
-        support risk-informed engineering
-        decisions.</p>
+        <p><b>Purpose:</b> Each method is
+        displayed individually so engineers,
+        students, and researchers can
+        systematically compare how different
+        published correlations perform for
+        the same reservoir configuration.</p>
+        <p><b>Important:</b> This is a
+        <b>comparison and analysis tool</b>,
+        not a facility planning tool.
+        Predictions from all methods carry
+        significant uncertainty. Users should
+        interpret results in the context of
+        the documented method limitations
+        (see Validation Cases tab).</p>
         </div>
         """, unsafe_allow_html=True)
         st.stop()
@@ -882,7 +891,7 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ─── PREDICTION RANGE SUMMARY ────
+    # ─── COMPARATIVE SUMMARY ──────────
     valid_preds = [p for p in predictions
                     if p is not None and p > 0]
 
@@ -893,25 +902,39 @@ with tab1:
         pred_median = np.median(valid_preds)
 
         st.markdown('<div class="section-hdr">'
-                    '📊 Overall Prediction Range'
+                    '📊 Comparative Summary'
                     '</div>',
                     unsafe_allow_html=True)
 
-        r_med = risk_level(pred_median)
+        divergence = pred_max / pred_min \
+                     if pred_min > 0 else 0
 
         st.markdown(f"""
         <div class="ensemble-card">
-        <h2>{r_med['icon']} Predicted Breakthrough
-        Range: {pred_min:.0f} to
-        {pred_max:.0f} days</h2>
-        <h3>Median estimate: {pred_median:.0f}
-        days ({pred_median/365:.2f} years) —
-        Risk: {r_med['cat']}</h3>
-        <p><b>Number of valid predictions:</b>
-        {len(valid_preds)} of 5 methods</p>
-        <p><b>Spread:</b> {pred_max - pred_min:.0f}
-        days between shortest and longest
-        prediction</p>
+        <h2>📊 Method Divergence Analysis</h2>
+        <h3>Predictions differ by
+        {divergence:.1f}x across
+        {len(valid_preds)} methods</h3>
+        <p><b>Shortest prediction:</b>
+        {pred_min:.0f} days
+        ({pred_min/365:.2f} years)</p>
+        <p><b>Longest prediction:</b>
+        {pred_max:.0f} days
+        ({pred_max/365:.2f} years)</p>
+        <p><b>Mean of predictions:</b>
+        {pred_mean:.0f} days</p>
+        <p><b>Median of predictions:</b>
+        {pred_median:.0f} days</p>
+        <p style="margin-top: 15px;
+        color: #f39c12 !important;">
+        <b>Interpretation:</b> The
+        {divergence:.1f}x divergence between
+        methods indicates the significant
+        uncertainty inherent in analytical
+        water breakthrough prediction.
+        See Validation Cases tab for
+        documented method performance
+        against published field data.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1837,19 +1860,30 @@ with tab5:
 
     ### Framework Overview
 
-    WaterWatch is an **ensemble framework** for
-    water breakthrough time prediction in Niger
-    Delta vertical oil wells. Rather than
-    relying on a single analytical correlation,
-    it evaluates five established published
-    methods simultaneously and provides:
+    WaterWatch is a **comparative framework**
+    that implements five established water
+    breakthrough time correlations to enable
+    systematic comparison of their behavior
+    when applied to the same reservoir
+    parameters. The framework does not
+    prescribe a "best" method or claim
+    accurate prediction; instead, it makes
+    the diversity of published methods and
+    their limitations transparent and
+    accessible.
 
-    - Individual method predictions
-    - Statistical summary (mean, median, range)
-    - P10/P50/P90 uncertainty range
-    - Engineering interpretation
-    - Sensitivity analysis
-    - Published validation case (ADX Oilfield)
+    The framework provides:
+
+    - Individual method predictions displayed
+      separately for direct comparison
+    - Statistical summary of predictions
+      (min, max, mean, median)
+    - Two published validation cases
+      (Niger Delta ADX Oilfield and
+      Iraqi Field)
+    - Sensitivity analysis for parameter
+      effects
+    - Complete methodology and references
 
     ---
 
@@ -1869,60 +1903,82 @@ with tab5:
 
     All five correlations are computed
     simultaneously using the same input
-    parameters. The framework then calculates:
+    parameters. Predictions from each
+    method are displayed separately
+    without combination into a single
+    output value. Summary statistics
+    quantify the divergence between
+    methods:
 
-    - **Mean:** Simple average of all valid
+    - **Individual predictions:** Each
+      method's output shown independently
+    - **Min/Max:** The shortest and
+      longest predicted times among
+      the methods
+    - **Mean:** Simple average of all
+      valid predictions
+    - **Median:** Middle value among
       predictions
-    - **Median (P50):** Middle value —
-      recommended for engineering decisions
-    - **P10:** 10th percentile — conservative
-      early estimate for facility planning
-    - **P90:** 90th percentile — optimistic
-      late estimate for long-term planning
-    - **Standard deviation:** Measure of
-      method disagreement
-    - **Coefficient of variation:** Normalized
-      uncertainty measure
+    - **Divergence factor:** Ratio of
+      longest to shortest prediction
 
     ---
 
-    ### Why Ensemble?
+    ### Why Comparative?
 
-    Published literature consistently shows
-    that individual water coning correlations
-    produce widely varying predictions for the
-    same reservoir (Al-Sudani et al 2018;
-    Okon et al 2017). Rather than claiming any
-    single method is universally accurate, the
-    ensemble approach:
+    Published literature consistently
+    documents that individual water coning
+    correlations produce widely varying
+    predictions for the same reservoir
+    (Al-Sudani et al 2018; Okon et al 2018).
+    Rather than selecting a single method
+    and treating its output as authoritative,
+    the comparative approach:
 
-    1. Acknowledges the inherent uncertainty
-       in analytical correlations
-    2. Provides a defensible prediction range
-    3. Supports risk-informed engineering
-       decisions
-    4. Does not require field calibration data
-       for a specific method
+    1. Makes method diversity transparent
+       to the user
+    2. Reveals the significant uncertainty
+       inherent in analytical prediction
+    3. Supports education about method
+       assumptions and limitations
+    4. Provides documentation of method
+       behavior across different reservoir
+       types when combined with validation
+       cases
 
     ---
 
-    ### Novel Contribution
+    ### Contribution of This Study
 
-    The primary contribution of this study is
-    the **development of an ensemble framework
-    that integrates five established
-    correlations with uncertainty
-    quantification for Niger Delta vertical
-    wells**. The framework demonstrates that:
+    The primary contribution of this study
+    is the **systematic implementation and
+    comparative evaluation of five
+    established water breakthrough
+    correlations across two published field
+    validation cases**. The framework
+    documents:
 
-    - No single correlation is universally
-      accurate
-    - Method divergence provides useful
-      uncertainty information
-    - Ensemble statistics support engineering
-      decision-making
-    - Published Niger Delta case study
-      (ADX Oilfield) validates the framework
+    - The significant divergence between
+      published methods when applied to
+      identical reservoir parameters
+    - The performance of the Okon et al
+      (2018) Niger Delta specific
+      correlation both within and outside
+      its calibration domain
+    - The systematic underprediction bias
+      exhibited by classical analytical
+      correlations across both tested
+      reservoir types
+    - The practical limitations of
+      currently available analytical
+      methods for Niger Delta water
+      breakthrough prediction
+
+    These findings identify specific
+    research gaps and provide an
+    evidence-based foundation for future
+    work in Niger Delta water breakthrough
+    prediction methodology.
 
     ---
 
@@ -1931,15 +1987,23 @@ with tab5:
     1. Analytical correlations assume
        homogeneous radial flow — Niger Delta
        reservoirs are heterogeneous
-    2. No post-breakthrough water cut
+    2. All tested methods show significant
+       prediction error against validation
+       cases; the framework does not
+       claim predictive accuracy
+    3. No post-breakthrough water cut
        prediction
-    3. Single-well analysis
-    4. Requires representative reservoir
-       parameters
+    4. Single-well analysis without
+       interference effects
     5. Not validated on horizontal wells
-    6. Weighting scheme uses equal weights;
-       reservoir-specific weighting is
-       identified as future work
+    6. Only two validation cases available;
+       broader validation identified as
+       future work
+    7. Framework is a comparative and
+       analytical tool; not intended to
+       replace detailed reservoir
+       simulation for facility planning
+       decisions
 
     ---
 
