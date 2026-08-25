@@ -1510,20 +1510,6 @@ with tab2:
                 "this prediction against a known actual breakthrough "
                 "time.")
 
-        st.markdown("""
-        <div class="warning-card">
-        <p><b>Honest caveat:</b> this fit is calibrated on a single
-        well's rate sweep (the Iraqi field, R&sup2; = 0.998 within
-        that geology). Applying the same fitted constants to the ADX
-        Oilfield (different geology) predicts ~52 days against an
-        actual 1653 days — it does not transfer across reservoirs
-        without re-calibration, the same limitation documented for
-        Okon (2018). Read this as evidence that Qo/Qoc is a genuine
-        governing variable within a fixed geological setting, not as
-        a general-purpose replacement for the five methods above.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
 # ═══════════════════════════════════════════════════════════════════
 # TAB 3: SENSITIVITY ANALYSIS
 # ═══════════════════════════════════════════════════════════════════
