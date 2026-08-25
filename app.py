@@ -425,74 +425,54 @@ def rate_ratio_diagnosis(Qo, Qoc):
     return round(ratio, 2), label
 
 # ═══════════════════════════════════════════════════════════════════
-# APPLICABILITY-DOMAIN (AD) SCREENING LAYER  ★ PROJECT CONTRIBUTION ★
+# FLOW-RATE-RATIO (Qo/Qoc) PREDICTION  ★ PROJECT CONTRIBUTION ★
 #
-# Regionally-calibrated correlations like Okon et al. (2018) are only
-# reliable inside the geological/fluid envelope they were fitted on.
-# Section 2.4.2-2.4.3 of this report documents the Agbada Formation
-# (Niger Delta) property ranges. This layer checks whether the CURRENT
-# well's inputs fall inside that envelope, and if not, flags the Okon
-# prediction as an extrapolation and recommends the classical-method
-# bound instead. This converts the observed regional-calibration
-# failure (Chapter 4 validation results: -0.2% error on ADX vs +314%
-# on an out-of-region Iraqi field) from a passive limitation into an
-# active, automated decision-support rule.
+# None of the five breakthrough correlations use rate relative to the
+# well's own critical rate. Chapter 4 testing on the Iraqi field's
+# 5-rate sweep (same well, same geology, only Qo varied) showed
+# breakthrough time follows a near-perfect power law of Qo/Qoc:
+#
+#       tBT = a * (Qo/Qoc)^b
+#
+# Fitted here by log-linear regression on that 5-point dataset:
+#       a = 130240.22 , b = -1.35503 , R^2 = 0.998
+#
+# This is offered as a SIXTH, experimental prediction — testing
+# whether rate-ratio normalization improves on the raw-Qo classical
+# methods and the regionally-fitted Okon (2018) correlation. Because
+# it is calibrated on a single well's rate sweep, it should be read
+# alongside the other five, not as a replacement for them (the same
+# fit applied to the ADX Oilfield, a different reservoir, predicts
+# ~52 days against an actual 1653 days — a reminder that this, too,
+# is a fit that has not been shown to transfer across reservoirs).
 # ═══════════════════════════════════════════════════════════════════
 
-# Niger Delta / Agbada Formation typical ranges, from Section 2.4.2-2.4.3
-NIGER_DELTA_DOMAIN = {
-    'phi':        (0.15, 0.35),      # porosity, fraction
-    'kv_kh':      (1/15, 1/5),       # kv is 5-15x lower than kh
-    'API':        (25, 38),          # most commercial production
-    'mu_o':       (1.0, 5.0),        # cp
-    'rho_o':      (40.0, 55.0),      # lb/ft3
-    'rho_w':      (62.0, 65.0),      # lb/ft3
-    'salinity':   (20000, 50000),    # ppm TDS
-    'T_F':        (150.0, 200.0),    # deg F
-}
+FLOW_RATIO_A = 130240.21838812485
+FLOW_RATIO_B = -1.3550286600094037
 
-def check_applicability_domain(phi, kh, kv, API=None, mu_o=None,
-                                rho_o=None, rho_w=None, sal=None,
-                                T_F=None):
+def flow_rate_ratio_prediction(kh, h, hp, mu_o, Bo, Qo, re, rw,
+                                rho_w, rho_o):
     """
-    Checks current well parameters against the Niger Delta / Agbada
-    Formation envelope the Okon et al. (2018) correlation was
-    developed within. Returns a status label and a list of the
-    specific parameters that fall outside the documented range.
+    Experimental breakthrough-time prediction using the fitted
+    power law tBT = a * (Qo/Qoc)^b, where Qoc is the Meyer-Garder
+    (1954) critical rate for the well. Calibrated on the Iraqi
+    field's 5-rate production sweep (R^2 = 0.998).
+
+    Returns (tBT_days, Qoc, ratio, error_message).
     """
-    kv_kh = kv / kh if kh > 0 else 0
-    checks = {
-        'Porosity (\u03c6)': (phi, NIGER_DELTA_DOMAIN['phi']),
-        'kv/kh ratio': (kv_kh, NIGER_DELTA_DOMAIN['kv_kh']),
-    }
-    if API is not None:
-        checks['API gravity'] = (API, NIGER_DELTA_DOMAIN['API'])
-    if mu_o is not None:
-        checks['Oil viscosity (\u03bco)'] = (mu_o, NIGER_DELTA_DOMAIN['mu_o'])
-    if rho_o is not None:
-        checks['Oil density (\u03c1o)'] = (rho_o, NIGER_DELTA_DOMAIN['rho_o'])
-    if rho_w is not None:
-        checks['Water density (\u03c1w)'] = (rho_w, NIGER_DELTA_DOMAIN['rho_w'])
-    if sal is not None:
-        checks['Salinity'] = (sal, NIGER_DELTA_DOMAIN['salinity'])
-    if T_F is not None:
-        checks['Temperature'] = (T_F, NIGER_DELTA_DOMAIN['T_F'])
+    Qoc = meyer_garder_critical_rate(kh, h, hp, mu_o, Bo, re, rw,
+                                      rho_w, rho_o)
+    if Qoc is None or Qoc <= 0 or Qo <= 0:
+        return None, Qoc, None, "Unable to compute Qoc for these inputs"
 
-    out_of_range = []
-    for name, (val, (lo, hi)) in checks.items():
-        if val < lo or val > hi:
-            out_of_range.append((name, val, lo, hi))
-
-    n_checked = len(checks)
-    n_flagged = len(out_of_range)
-    if n_flagged == 0:
-        status = "WITHIN DOMAIN"
-    elif n_flagged <= max(1, int(n_checked * 0.3)):
-        status = "MARGINAL"
-    else:
-        status = "OUTSIDE DOMAIN"
-
-    return status, out_of_range
+    ratio = Qo / Qoc
+    try:
+        tBT = FLOW_RATIO_A * ratio ** FLOW_RATIO_B
+        if tBT <= 0 or not np.isfinite(tBT):
+            return None, Qoc, ratio, "Non-physical result"
+        return round(tBT, 1), Qoc, round(ratio, 2), None
+    except Exception as e:
+        return None, Qoc, ratio, str(e)
 
 # ═══════════════════════════════════════════════════════════════════
 # RISK CLASSIFICATION
@@ -934,14 +914,6 @@ with tab1:
         "Yang-Wattenbarger (1991)",
         "Okon et al Niger Delta (2018)"]
 
-    # ─── Applicability-Domain screening for Okon (2018) ──
-    ad_API = API if pvt_mode == "Calculate from correlations" else None
-    ad_salinity = sal if pvt_mode == "Calculate from correlations" else None
-    ad_TF = T_F if pvt_mode == "Calculate from correlations" else None
-    ad_status, ad_flags = check_applicability_domain(
-        phi=phi, kh=kh, kv=kv, API=ad_API, mu_o=mu_o,
-        rho_o=rho_o, rho_w=rho_w, sal=ad_salinity, T_F=ad_TF)
-
     # ─── Ensemble statistics ─────────
     ensemble = compute_ensemble_statistics(
         predictions)
@@ -950,29 +922,6 @@ with tab1:
         st.error("❌ Insufficient valid "
                  "predictions for ensemble")
         st.stop()
-
-    # ─── AD-aware recommendation override ────
-    # Only trust Okon as the primary estimate when the well is
-    # inside its calibration domain. Outside that domain, fall back
-    # to the classical bound rather than an extrapolated Okon value.
-    ad_API = API if pvt_mode == "Calculate from correlations" else None
-    ad_salinity = sal if pvt_mode == "Calculate from correlations" else None
-    ad_TF = T_F if pvt_mode == "Calculate from correlations" else None
-    ad_status, ad_flags = check_applicability_domain(
-        phi=phi, kh=kh, kv=kv, API=ad_API, mu_o=mu_o,
-        rho_o=rho_o, rho_w=rho_w, sal=ad_salinity, T_F=ad_TF)
-
-    if ad_status == "OUTSIDE DOMAIN" and ensemble.get('classical_mean'):
-        ensemble['recommended'] = ensemble['classical_mean']
-        ensemble['engineering_bt'] = ensemble['classical_mean']
-        ensemble['lower_bound'] = ensemble['classical_min']
-        ensemble['upper_bound'] = ensemble['classical_max']
-    elif ad_status == "MARGINAL" and ensemble.get('classical_mean') \
-            and ensemble.get('okon'):
-        # Widen the band; keep Okon as upper end but no longer as
-        # the single point estimate
-        ensemble['recommended'] = round(
-            (ensemble['classical_mean'] + ensemble['okon']) / 2, 1)
 
     # ─── SEPARATE CLASSICAL vs OKON ─
     classical_preds = [p for p in
@@ -1001,51 +950,6 @@ with tab1:
                 '🎯 Individual Method Predictions'
                 '</div>',
                 unsafe_allow_html=True)
-
-    # ─── APPLICABILITY-DOMAIN BANNER ─────
-    if ad_status == "WITHIN DOMAIN":
-        st.markdown(f"""
-        <div class="info-card" style="border-left-color:#27ae60;">
-        <h4>✅ Applicability Domain: WITHIN RANGE</h4>
-        <p>This well's rock and fluid properties fall inside the
-        Agbada Formation (Niger Delta) envelope that the Okon et al.
-        (2018) correlation was calibrated on. <b>The Okon prediction
-        can be treated as the primary estimate</b>, consistent with
-        its 0.2% error on the ADX validation case.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    elif ad_status == "MARGINAL":
-        flags_txt = "; ".join(
-            [f"{n} = {v:.3g} (expected {lo:.3g}\u2013{hi:.3g})"
-             for n, v, lo, hi in ad_flags])
-        st.markdown(f"""
-        <div class="warning-card">
-        <h4>\u26a0\ufe0f Applicability Domain: MARGINAL</h4>
-        <p>One or more inputs sit just outside the documented Niger
-        Delta / Agbada Formation range: <b>{flags_txt}</b>.</p>
-        <p>Treat the Okon (2018) prediction as indicative rather than
-        definitive. Consider the classical-method range as a
-        supporting lower bound.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        flags_txt = "; ".join(
-            [f"{n} = {v:.3g} (expected {lo:.3g}\u2013{hi:.3g})"
-             for n, v, lo, hi in ad_flags])
-        st.markdown(f"""
-        <div class="warning-card">
-        <h4>\u274c Applicability Domain: OUTSIDE RANGE
-        \u2014 Okon (2018) is EXTRAPOLATING</h4>
-        <p>This well's properties fall well outside the Niger Delta
-        envelope the Okon (2018) correlation was fitted on:
-        <b>{flags_txt}</b>.</p>
-        <p>This is exactly the failure mode documented in the
-        Validation Cases tab (+314% error on an out-of-region field).
-        <b>Do not use the Okon prediction as the primary estimate
-        here.</b> The classical-method range below is the more
-        defensible (if conservative) basis for planning.</p>
-        </div>
-        """, unsafe_allow_html=True)
 
     # ─── CRITICAL RATE DIAGNOSTIC (Meyer-Garder 1954) ─
     st.markdown('<div class="section-hdr">'
@@ -1320,11 +1224,15 @@ with tab1:
         'params': {
             'kh': kh, 'kv': kv, 'phi': phi,
             'h': h, 'hp': hp, 'hap': hap,
-            're': re, 'mu_o': mu_o, 'mu_w': mu_w,
+            're': re, 'rw': rw,
+            'mu_o': mu_o, 'mu_w': mu_w,
             'Bo': Bo, 'rho_w': rho_w,
             'rho_o': rho_o, 'Qo': Qo,
             'M': M, 'alpha_mob': alpha_mob
-        }
+        },
+        'preset': preset,
+        'classical_mean': classical_mean,
+        'okon_pred': okon_pred
     }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1491,6 +1399,130 @@ with tab2:
     df_sum = pd.DataFrame(summary_data)
     st.dataframe(df_sum, hide_index=True,
                   use_container_width=True)
+
+    st.divider()
+
+    # ═════════════════════════════════════════════════════════════
+    # FLOW-RATE-RATIO (Qo/Qoc) PREDICTION — PROJECT CONTRIBUTION
+    # ═════════════════════════════════════════════════════════════
+
+    st.markdown('<div class="section-hdr">'
+                '⚡ Flow-Rate-Ratio Prediction — '
+                'Can Qo/Qoc Improve on the Five Methods Above?'
+                '</div>',
+                unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="info-card">
+    <p>None of the five correlations above use production rate
+    <b>relative to the well's own critical rate</b> — they all use
+    raw Qo. This section tests a sixth, experimental predictor built
+    on that idea:</p>
+    <p style="text-align:center; font-size:1.05rem;">
+    <b>t<sub>BT</sub> = a &times; (Q<sub>o</sub>/Q<sub>oc</sub>)<sup>b</sup></b>
+    </p>
+    <p>where Q<sub>oc</sub> is the Meyer-Garder (1954) critical rate.
+    Fitted by log-linear regression on the Iraqi field's 5-rate
+    production sweep: <b>a = 130,240.22, b = &minus;1.355
+    (R&sup2; = 0.998)</b>.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    p = res['params']
+    tBT_ratio, Qoc_p, ratio_p, err_ratio = \
+        flow_rate_ratio_prediction(
+            p['kh'], p['h'], p['hp'], p['mu_o'], p['Bo'],
+            p['Qo'], p['re'], p['rw'], p['rho_w'], p['rho_o'])
+
+    # Known actual BT values for the preset cases, for an honest
+    # accuracy check against the classical/Okon methods.
+    IRAQ_ACTUALS = {800: 924, 1500: 424, 2500: 195,
+                     3500: 125, 5000: 80}
+    actual_bt = None
+    if res.get('preset') == 'adx':
+        actual_bt = 1653.0
+    elif res.get('preset') == 'iraq':
+        for q_known, a_known in IRAQ_ACTUALS.items():
+            if abs(p['Qo'] - q_known) < 1.0:
+                actual_bt = float(a_known)
+                break
+
+    if err_ratio:
+        st.error(f"❌ Could not compute flow-ratio prediction: "
+                 f"{err_ratio}")
+    else:
+        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1.metric("Critical Rate (Qoc)",
+                      f"{Qoc_p:.2f} STB/d")
+        col_r2.metric("Rate Ratio (Qo/Qoc)",
+                      f"{ratio_p:.1f}x")
+        r_flow = risk_level(tBT_ratio)
+        col_r3.metric("Flow-Ratio Prediction",
+                      f"{tBT_ratio:.0f} d",
+                      f"{tBT_ratio/365:.2f} yr")
+
+        st.markdown(f"""
+        <div class="ensemble-card">
+        <h2>⚡ Flow-Rate-Ratio Prediction</h2>
+        <h3>{r_flow['icon']} {tBT_ratio:.0f} days
+        ({tBT_ratio/365:.2f} years) — Risk: {r_flow['cat']}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ─── Accuracy comparison table ───
+        compare_rows = []
+        if res['ensemble'].get('classical_mean'):
+            cm = res['ensemble']['classical_mean']
+            row = {'Approach': 'Classical Mean (4 methods)',
+                   'Prediction (d)': f"{cm:.0f}"}
+            if actual_bt:
+                row['Error vs Actual'] = \
+                    f"{abs(cm-actual_bt)/actual_bt*100:.1f}%"
+            compare_rows.append(row)
+        if res.get('okon_pred'):
+            ok = res['okon_pred']
+            row = {'Approach': 'Okon et al (2018)',
+                   'Prediction (d)': f"{ok:.0f}"}
+            if actual_bt:
+                row['Error vs Actual'] = \
+                    f"{abs(ok-actual_bt)/actual_bt*100:.1f}%"
+            compare_rows.append(row)
+        row = {'Approach': 'Flow-Rate-Ratio (Qo/Qoc)',
+               'Prediction (d)': f"{tBT_ratio:.0f}"}
+        if actual_bt:
+            row['Error vs Actual'] = \
+                f"{abs(tBT_ratio-actual_bt)/actual_bt*100:.1f}%"
+        compare_rows.append(row)
+        if actual_bt:
+            compare_rows.append({
+                'Approach': 'Actual (field/simulation)',
+                'Prediction (d)': f"{actual_bt:.0f}",
+                'Error vs Actual': '—'})
+
+        st.markdown("**Accuracy comparison:**")
+        st.dataframe(pd.DataFrame(compare_rows),
+                      hide_index=True,
+                      use_container_width=True)
+
+        if actual_bt is None:
+            st.caption(
+                "Load the ADX or Iraqi preset (sidebar) to compare "
+                "this prediction against a known actual breakthrough "
+                "time.")
+
+        st.markdown("""
+        <div class="warning-card">
+        <p><b>Honest caveat:</b> this fit is calibrated on a single
+        well's rate sweep (the Iraqi field, R&sup2; = 0.998 within
+        that geology). Applying the same fitted constants to the ADX
+        Oilfield (different geology) predicts ~52 days against an
+        actual 1653 days — it does not transfer across reservoirs
+        without re-calibration, the same limitation documented for
+        Okon (2018). Read this as evidence that Qo/Qoc is a genuine
+        governing variable within a fixed geological setting, not as
+        a general-purpose replacement for the five methods above.</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════
 # TAB 3: SENSITIVITY ANALYSIS
@@ -2194,13 +2226,14 @@ with tab5:
 
     ### Contribution of This Study
 
-    This study makes two contributions,
-    one a genuine empirical finding rooted
-    in classical critical-rate theory, and
-    one methodological.
+    This study's central contribution is a
+    genuine empirical finding rooted in
+    classical critical-rate theory, tested
+    directly as an experimental sixth
+    predictor in the Method Comparison tab.
 
-    **1. Critical-rate diagnostic and a
-    bounded empirical finding (Chapter 4).**
+    **Critical-rate diagnostic and a
+    flow-rate-ratio prediction (Chapter 4).**
     None of the five breakthrough
     correlations reviewed in this study use
     the classical Meyer-Garder (1954)
@@ -2224,65 +2257,31 @@ with tab5:
     This is a strong, genuine physical
     relationship that none of the five
     implemented correlations expose
-    directly. However, testing the same
-    fitted relationship against the ADX
-    Oilfield (a different reservoir) failed
-    (predicted 52 days vs an actual 1653
-    days). This shows Qo/Qoc governs
-    breakthrough behavior strongly within a
-    fixed geological setting, but — like
-    the Okon (2018) correlation itself —
-    does not transfer across reservoirs
-    without re-calibration. This is reported
-    as a bounded, honest finding rather than
-    a new predictive correlation, since only
-    two field cases are available for
-    cross-reservoir testing, which is
+    directly, and it is offered in the
+    Method Comparison tab as a sixth,
+    experimental prediction alongside the
+    five classical/regional methods so its
+    accuracy can be checked directly against
+    the validation cases.
+
+    However, testing the same fitted
+    relationship against the ADX Oilfield (a
+    different reservoir) failed (predicted
+    ~52 days vs an actual 1653 days). This
+    shows Qo/Qoc governs breakthrough
+    behavior strongly within a fixed
+    geological setting, but — like the Okon
+    (2018) correlation itself — does not
+    transfer across reservoirs without
+    re-calibration. This is reported as a
+    bounded, honest finding rather than a
+    general-purpose predictive correlation,
+    since only two field cases are available
+    for cross-reservoir testing, which is
     insufficient data to fit a generalizable
     model responsibly.
 
-    **2. Applicability-Domain (AD) screening
-    layer.** The validation results in this
-    study show that Okon (2018) is near-exact
-    inside its calibration domain (0.2%
-    error on the ADX Oilfield) but fails
-    catastrophically outside it (+314%
-    error on an out-of-region Iraqi field)
-    — the same transfer-failure pattern
-    found independently via critical-rate
-    theory above. WaterWatch checks the
-    input well's rock and fluid properties
-    against the documented Agbada Formation
-    (Niger Delta) envelope (Section 2.4.2-
-    2.4.3) at runtime, and automatically:
-
-    - Flags when Okon (2018) is being
-      extrapolated outside its calibration
-      domain, before the user sees the
-      number
-    - Falls back to the classical-method
-      bound as the recommended estimate
-      when extrapolation is detected,
-      rather than silently displaying an
-      untrustworthy Okon value
-    - Widens the recommended range for
-      wells that sit near the domain
-      boundary rather than treating the
-      domain as a hard cutoff
-
-    Together, these two contributions
-    independently arrive at the same
-    conclusion through different routes —
-    one from reservoir engineering theory
-    (critical rate), one from empirical
-    validation (documented property ranges)
-    — which strengthens the case that
-    regional/geological transferability,
-    not method choice alone, is the central
-    unresolved problem in Niger Delta water
-    breakthrough prediction.
-
-    Supporting these two contributions, the
+    Supporting this contribution, the
     framework also documents:
 
     - The significant divergence between
