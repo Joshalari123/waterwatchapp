@@ -360,121 +360,6 @@ def method_5_okon_niger_delta(
         return None, str(e)
 
 # ═══════════════════════════════════════════════════════════════════
-# METHOD 6 (DIAGNOSTIC): MEYER-GARDER CRITICAL RATE (1954)
-# Ahmed (2010) Reservoir Engineering Handbook, Ch.9
-# ★ PROJECT CONTRIBUTION — reservoir-engineering discovery ★
-#
-# None of the five breakthrough correlations above use the classical
-# CRITICAL RATE concept (the rate below which the cone never reaches
-# perforations). This function computes it and the resulting
-# dimensionless "rate ratio" Qo/Qoc: how far above critical the well
-# is actually producing.
-#
-# Testing this against the Iraqi field's 5-rate sweep (same well,
-# only Qo varied) shows breakthrough time follows a near-perfect
-# power law of Qo/Qoc (R^2 = 0.998) — a genuine physical relationship
-# none of the five implemented correlations expose directly, since
-# they use raw Qo rather than Qo relative to the well's own critical
-# rate. Testing the SAME fitted relationship against the ADX field
-# (different geology) fails badly — showing this relationship holds
-# strongly within a fixed geology but does not transfer across
-# reservoirs, exactly like the Okon (2018) domain-transfer failure.
-# This is reported as a genuine (if bounded) finding in Chapter 4,
-# not implemented as a predictive tool.
-# ═══════════════════════════════════════════════════════════════════
-
-def meyer_garder_critical_rate(kh, h, hp, mu_o, Bo, re, rw,
-                                rho_w, rho_o):
-    """
-    Meyer & Garder (1954) critical rate for water coning,
-    vertical well. Ahmed (2010) Reservoir Engineering Handbook,
-    Eq. 9-2 form (water-coning analogue of the gas-coning Eq. 9-1).
-
-    Qoc = 0.246e-4 * [(rho_w - rho_o) / ln(re/rw)]
-          * (kh / (mu_o * Bo)) * [h^2 - (h - hp)^2]
-
-    Returns Qoc in STB/day. kh in mD; h, hp, re, rw in ft;
-    rho in lb/ft3; mu_o in cp; Bo in bbl/STB.
-
-    Note: uses kh as a proxy for effective oil permeability ko,
-    consistent with the simplification already used elsewhere in
-    this framework (e.g. the Sobocinski-family Z parameter).
-    """
-    if kh <= 0 or mu_o <= 0 or Bo <= 0 or re <= rw or rw <= 0:
-        return None
-    dr = rho_w - rho_o
-    if dr <= 0 or h <= hp:
-        return None
-    geom = h**2 - (h - hp)**2
-    Qoc = 0.246e-4 * (dr / np.log(re / rw)) * (kh / (mu_o * Bo)) * geom
-    return round(Qoc, 3) if Qoc > 0 else None
-
-def rate_ratio_diagnosis(Qo, Qoc):
-    """Qualitative interpretation of Qo/Qoc for engineering display."""
-    if Qoc is None or Qoc <= 0:
-        return None, "Unable to compute critical rate for this input set"
-    ratio = Qo / Qoc
-    if ratio <= 1:
-        label = "SUB-CRITICAL — cone should stabilize; breakthrough not expected under steady-state theory"
-    elif ratio <= 10:
-        label = "MODERATELY ABOVE CRITICAL — coning active but gradual"
-    elif ratio <= 100:
-        label = "WELL ABOVE CRITICAL — fast coning behavior expected"
-    else:
-        label = "DEEPLY SUPER-CRITICAL — very fast coning; steady-state critical-rate theory is far outside its intended range here"
-    return round(ratio, 2), label
-
-# ═══════════════════════════════════════════════════════════════════
-# FLOW-RATE-RATIO (Qo/Qoc) PREDICTION  ★ PROJECT CONTRIBUTION ★
-#
-# None of the five breakthrough correlations use rate relative to the
-# well's own critical rate. Chapter 4 testing on the Iraqi field's
-# 5-rate sweep (same well, same geology, only Qo varied) showed
-# breakthrough time follows a near-perfect power law of Qo/Qoc:
-#
-#       tBT = a * (Qo/Qoc)^b
-#
-# Fitted here by log-linear regression on that 5-point dataset:
-#       a = 130240.22 , b = -1.35503 , R^2 = 0.998
-#
-# This is offered as a SIXTH, experimental prediction — testing
-# whether rate-ratio normalization improves on the raw-Qo classical
-# methods and the regionally-fitted Okon (2018) correlation. Because
-# it is calibrated on a single well's rate sweep, it should be read
-# alongside the other five, not as a replacement for them (the same
-# fit applied to the ADX Oilfield, a different reservoir, predicts
-# ~52 days against an actual 1653 days — a reminder that this, too,
-# is a fit that has not been shown to transfer across reservoirs).
-# ═══════════════════════════════════════════════════════════════════
-
-FLOW_RATIO_A = 130240.21838812485
-FLOW_RATIO_B = -1.3550286600094037
-
-def flow_rate_ratio_prediction(kh, h, hp, mu_o, Bo, Qo, re, rw,
-                                rho_w, rho_o):
-    """
-    Experimental breakthrough-time prediction using the fitted
-    power law tBT = a * (Qo/Qoc)^b, where Qoc is the Meyer-Garder
-    (1954) critical rate for the well. Calibrated on the Iraqi
-    field's 5-rate production sweep (R^2 = 0.998).
-
-    Returns (tBT_days, Qoc, ratio, error_message).
-    """
-    Qoc = meyer_garder_critical_rate(kh, h, hp, mu_o, Bo, re, rw,
-                                      rho_w, rho_o)
-    if Qoc is None or Qoc <= 0 or Qo <= 0:
-        return None, Qoc, None, "Unable to compute Qoc for these inputs"
-
-    ratio = Qo / Qoc
-    try:
-        tBT = FLOW_RATIO_A * ratio ** FLOW_RATIO_B
-        if tBT <= 0 or not np.isfinite(tBT):
-            return None, Qoc, ratio, "Non-physical result"
-        return round(tBT, 1), Qoc, round(ratio, 2), None
-    except Exception as e:
-        return None, Qoc, ratio, str(e)
-
-# ═══════════════════════════════════════════════════════════════════
 # RISK CLASSIFICATION
 # ═══════════════════════════════════════════════════════════════════
 
@@ -686,15 +571,6 @@ with st.sidebar:
         2938.0 if use_adx else
         7500.0 if use_iraq else 1000.0,
         50.0)
-    rw = st.number_input(
-        "rw — Wellbore Radius (ft)",
-        0.1, 2.0, 0.328, 0.01,
-        help="Default 0.328 ft (~4-in bore), a "
-             "standard completion assumption. "
-             "Adjust if your well's actual "
-             "radius is known. Used only for "
-             "the Meyer-Garder (1954) critical "
-             "rate diagnostic.")
 
     st.markdown("**🧪 Fluid Properties**")
     pvt_mode = st.radio(
@@ -900,11 +776,6 @@ with tab1:
         phi, mu_o, mu_w, re, Qo, rho_w,
         rho_o, kv, kh, hp, h, hap)
 
-    # ─── Critical rate diagnostic (Meyer-Garder 1954) ─
-    Qoc = meyer_garder_critical_rate(
-        kh, h, hp, mu_o, Bo, re, rw, rho_w, rho_o)
-    rate_ratio, rate_label = rate_ratio_diagnosis(Qo, Qoc)
-
     predictions = [tBT_1, tBT_2, tBT_3,
                     tBT_4, tBT_5]
     method_names = [
@@ -950,36 +821,6 @@ with tab1:
                 '🎯 Individual Method Predictions'
                 '</div>',
                 unsafe_allow_html=True)
-
-    # ─── CRITICAL RATE DIAGNOSTIC (Meyer-Garder 1954) ─
-    st.markdown('<div class="section-hdr">'
-                '⚡ Critical Rate Diagnostic (Meyer-Garder, 1954)'
-                '</div>',
-                unsafe_allow_html=True)
-    if Qoc is not None:
-        col_mg1, col_mg2, col_mg3 = st.columns(3)
-        col_mg1.metric("Critical Rate (Qoc)", f"{Qoc:.2f} STB/d")
-        col_mg2.metric("Actual Rate (Qo)", f"{Qo:.0f} STB/d")
-        col_mg3.metric("Rate Ratio (Qo/Qoc)", f"{rate_ratio:.1f}x")
-        st.markdown(f"""
-        <div class="info-card">
-        <p><b>Regime:</b> {rate_label}</p>
-        <p style="font-size:0.85rem; color:#bdc3c7 !important;">
-        None of the five breakthrough correlations above use this
-        ratio directly — they use raw Qo. This project's testing
-        (Chapter 4) found that, within a single well's rate sweep
-        (holding geology fixed), breakthrough time follows a
-        near-perfect power law of Qo/Qoc (R\u00b2 = 0.998 on the
-        Iraqi field's 5-rate dataset) — but that this relationship
-        does not transfer to a geologically different well. This
-        mirrors, from first-principles critical-rate theory, the
-        same regional-transfer limitation found for the Okon (2018)
-        correlation.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.info("Critical rate diagnostic unavailable for these "
-                "inputs (check rw < re and rho_w > rho_o).")
 
     method_info = [
         ("Sobocinski Standard", tBT_1,
@@ -1224,15 +1065,11 @@ with tab1:
         'params': {
             'kh': kh, 'kv': kv, 'phi': phi,
             'h': h, 'hp': hp, 'hap': hap,
-            're': re, 'rw': rw,
-            'mu_o': mu_o, 'mu_w': mu_w,
+            're': re, 'mu_o': mu_o, 'mu_w': mu_w,
             'Bo': Bo, 'rho_w': rho_w,
             'rho_o': rho_o, 'Qo': Qo,
             'M': M, 'alpha_mob': alpha_mob
-        },
-        'preset': preset,
-        'classical_mean': classical_mean,
-        'okon_pred': okon_pred
+        }
     }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1399,116 +1236,6 @@ with tab2:
     df_sum = pd.DataFrame(summary_data)
     st.dataframe(df_sum, hide_index=True,
                   use_container_width=True)
-
-    st.divider()
-
-    # ═════════════════════════════════════════════════════════════
-    # FLOW-RATE-RATIO (Qo/Qoc) PREDICTION — PROJECT CONTRIBUTION
-    # ═════════════════════════════════════════════════════════════
-
-    st.markdown('<div class="section-hdr">'
-                '⚡ Flow-Rate-Ratio Prediction — '
-                'Can Qo/Qoc Improve on the Five Methods Above?'
-                '</div>',
-                unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="info-card">
-    <p>None of the five correlations above use production rate
-    <b>relative to the well's own critical rate</b> — they all use
-    raw Qo. This section tests a sixth, experimental predictor built
-    on that idea:</p>
-    <p style="text-align:center; font-size:1.05rem;">
-    <b>t<sub>BT</sub> = a &times; (Q<sub>o</sub>/Q<sub>oc</sub>)<sup>b</sup></b>
-    </p>
-    <p>where Q<sub>oc</sub> is the Meyer-Garder (1954) critical rate.
-    Fitted by log-linear regression on the Iraqi field's 5-rate
-    production sweep: <b>a = 130,240.22, b = &minus;1.355
-    (R&sup2; = 0.998)</b>.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    p = res['params']
-    tBT_ratio, Qoc_p, ratio_p, err_ratio = \
-        flow_rate_ratio_prediction(
-            p['kh'], p['h'], p['hp'], p['mu_o'], p['Bo'],
-            p['Qo'], p['re'], p['rw'], p['rho_w'], p['rho_o'])
-
-    # Known actual BT values for the preset cases, for an honest
-    # accuracy check against the classical/Okon methods.
-    IRAQ_ACTUALS = {800: 924, 1500: 424, 2500: 195,
-                     3500: 125, 5000: 80}
-    actual_bt = None
-    if res.get('preset') == 'adx':
-        actual_bt = 1653.0
-    elif res.get('preset') == 'iraq':
-        for q_known, a_known in IRAQ_ACTUALS.items():
-            if abs(p['Qo'] - q_known) < 1.0:
-                actual_bt = float(a_known)
-                break
-
-    if err_ratio:
-        st.error(f"❌ Could not compute flow-ratio prediction: "
-                 f"{err_ratio}")
-    else:
-        col_r1, col_r2, col_r3 = st.columns(3)
-        col_r1.metric("Critical Rate (Qoc)",
-                      f"{Qoc_p:.2f} STB/d")
-        col_r2.metric("Rate Ratio (Qo/Qoc)",
-                      f"{ratio_p:.1f}x")
-        r_flow = risk_level(tBT_ratio)
-        col_r3.metric("Flow-Ratio Prediction",
-                      f"{tBT_ratio:.0f} d",
-                      f"{tBT_ratio/365:.2f} yr")
-
-        st.markdown(f"""
-        <div class="ensemble-card">
-        <h2>⚡ Flow-Rate-Ratio Prediction</h2>
-        <h3>{r_flow['icon']} {tBT_ratio:.0f} days
-        ({tBT_ratio/365:.2f} years) — Risk: {r_flow['cat']}</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # ─── Accuracy comparison table ───
-        compare_rows = []
-        if res['ensemble'].get('classical_mean'):
-            cm = res['ensemble']['classical_mean']
-            row = {'Approach': 'Classical Mean (4 methods)',
-                   'Prediction (d)': f"{cm:.0f}"}
-            if actual_bt:
-                row['Error vs Actual'] = \
-                    f"{abs(cm-actual_bt)/actual_bt*100:.1f}%"
-            compare_rows.append(row)
-        if res.get('okon_pred'):
-            ok = res['okon_pred']
-            row = {'Approach': 'Okon et al (2018)',
-                   'Prediction (d)': f"{ok:.0f}"}
-            if actual_bt:
-                row['Error vs Actual'] = \
-                    f"{abs(ok-actual_bt)/actual_bt*100:.1f}%"
-            compare_rows.append(row)
-        row = {'Approach': 'Flow-Rate-Ratio (Qo/Qoc)',
-               'Prediction (d)': f"{tBT_ratio:.0f}"}
-        if actual_bt:
-            row['Error vs Actual'] = \
-                f"{abs(tBT_ratio-actual_bt)/actual_bt*100:.1f}%"
-        compare_rows.append(row)
-        if actual_bt:
-            compare_rows.append({
-                'Approach': 'Actual (field/simulation)',
-                'Prediction (d)': f"{actual_bt:.0f}",
-                'Error vs Actual': '—'})
-
-        st.markdown("**Accuracy comparison:**")
-        st.dataframe(pd.DataFrame(compare_rows),
-                      hide_index=True,
-                      use_container_width=True)
-
-        if actual_bt is None:
-            st.caption(
-                "Load the ADX or Iraqi preset (sidebar) to compare "
-                "this prediction against a known actual breakthrough "
-                "time.")
 
 # ═══════════════════════════════════════════════════════════════════
 # TAB 3: SENSITIVITY ANALYSIS
@@ -2212,67 +1939,21 @@ with tab5:
 
     ### Contribution of This Study
 
-    This study's central contribution is a
-    genuine empirical finding rooted in
-    classical critical-rate theory, tested
-    directly as an experimental sixth
-    predictor in the Method Comparison tab.
-
-    **Critical-rate diagnostic and a
-    flow-rate-ratio prediction (Chapter 4).**
-    None of the five breakthrough
-    correlations reviewed in this study use
-    the classical Meyer-Garder (1954)
-    critical rate concept — they use raw
-    production rate (Qo) rather than rate
-    relative to the well's own critical
-    rate (Qo/Qoc). This study adds the
-    Meyer-Garder critical rate calculation
-    to the framework and tests whether the
-    dimensionless ratio Qo/Qoc explains
-    breakthrough time better than raw Qo.
-
-    Using the Iraqi field's five-rate
-    production sweep (same well, same
-    geology, only Qo varied), breakthrough
-    time was found to follow a near-perfect
-    power law of Qo/Qoc:
-
-    tBT = a × (Qo/Qoc)^b,  R² = 0.998
-
-    This is a strong, genuine physical
-    relationship that none of the five
-    implemented correlations expose
-    directly, and it is offered in the
-    Method Comparison tab as a sixth,
-    experimental prediction alongside the
-    five classical/regional methods so its
-    accuracy can be checked directly against
-    the validation cases.
-
-    However, testing the same fitted
-    relationship against the ADX Oilfield (a
-    different reservoir) failed (predicted
-    ~52 days vs an actual 1653 days). This
-    shows Qo/Qoc governs breakthrough
-    behavior strongly within a fixed
-    geological setting, but — like the Okon
-    (2018) correlation itself — does not
-    transfer across reservoirs without
-    re-calibration. This is reported as a
-    bounded, honest finding rather than a
-    general-purpose predictive correlation,
-    since only two field cases are available
-    for cross-reservoir testing, which is
-    insufficient data to fit a generalizable
-    model responsibly.
-
-    Supporting this contribution, the
-    framework also documents:
+    The primary contribution of this study
+    is the **systematic implementation and
+    comparative evaluation of five
+    established water breakthrough
+    correlations across two published field
+    validation cases**. The framework
+    documents:
 
     - The significant divergence between
       published methods when applied to
       identical reservoir parameters
+    - The performance of the Okon et al
+      (2018) Niger Delta specific
+      correlation both within and outside
+      its calibration domain
     - The systematic underprediction bias
       exhibited by classical analytical
       correlations across both tested
@@ -2286,10 +1967,8 @@ with tab5:
     research gaps and provide an
     evidence-based foundation for future
     work in Niger Delta water breakthrough
-    prediction methodology — particularly
-    in refining the AD envelope itself as
-    more Niger Delta field data becomes
-    available.
+    prediction methodology.
+
 
     ---
 
